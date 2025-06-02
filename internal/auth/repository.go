@@ -176,7 +176,7 @@ func (r *UserRepo) Authorize(req *http.Request) (uuid.UUID, error) {
 		log.Debug().
 			Str("location", "Authorize").
 			Msg("CSRF token not found")
-		return uuid.UUID{}, fmt.Errorf("%w: missing CSRF token", ErrAuth)
+		return uuid.UUID{}, fmt.Errorf("%w: invalid CSRF token", ErrAuth)
 	}
 
 	log.Debug().
@@ -220,6 +220,14 @@ func (r *UserRepo) DeleteSessionByUserID(ctx context.Context, userID uuid.UUID) 
 }
 
 func (r *UserRepo) DeleteSessionsByDevice(ctx context.Context, userID uuid.UUID, userAgent string, ip string) error {
+	log.Debug().
+		Str("pkg", pkgName).
+		Str("method", "DeleteSessionsByDevice").
+		Str("userID", userID.String()).
+		Str("userAgent", userAgent).
+		Str("ip", ip).
+		Msg("Deleting sessions by device")
+
 	numRows, err := r.queries.DeleteSessionsByDevice(ctx, sqlc.DeleteSessionsByDeviceParams{
 		UserID:    userID,
 		UserAgent: userAgent,

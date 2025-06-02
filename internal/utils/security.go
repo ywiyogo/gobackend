@@ -3,6 +3,8 @@ package utils
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"net"
+	"strings"
 
 	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/bcrypt"
@@ -41,4 +43,14 @@ func GenerateSecureToken(n int) (string, error) {
 		return "", err
 	}
 	return base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(b), nil
+}
+
+// ExtractIPFromRemoteAddr extracts the IP address from a RemoteAddr string
+// which may include a port (e.g., "192.168.1.1:12345" -> "192.168.1.1")
+func ExtractIPFromRemoteAddr(remoteAddr string) string {
+	if host, _, err := net.SplitHostPort(remoteAddr); err == nil {
+		return host
+	}
+	// Fallback for cases where SplitHostPort fails (e.g., no port present)
+	return strings.Split(remoteAddr, ":")[0]
 }

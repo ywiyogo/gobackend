@@ -15,8 +15,9 @@ flowchart TD
     J --> K(Store tokens in database)
     K --> L(Delete existing sessions for device)
 
-    M(POST /protected) --> N(AuthMiddleware: Validate session_token cookie)
-    N --> O(Get session from database)
+    M(POST /protected) --> N(RateLimitMiddleware: Check request limit)
+    N --> O(AuthMiddleware: Validate session_token cookie)
+    O --> P(Get session from database)
     O --> P(Validate X-CSRF-Token header matches stored token)
     P --> Q(Grant access)
 

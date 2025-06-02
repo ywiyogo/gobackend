@@ -8,6 +8,12 @@ import (
 	"encoding/json"
 	"gobackend/internal/auth"
 	"net/http"
+	"time"
+)
+
+const (
+	rateLimitRequests = 50 // 50 requests per minute
+	rateLimitWindow   = time.Minute
 )
 
 type Router struct {
@@ -17,9 +23,6 @@ type Router struct {
 
 func NewRouter(serv *auth.Service) *Router {
 	mux := http.NewServeMux()
-	// Register the dashboard handler with authentication middleware
-	authMiddleware := auth.NewAuthMiddleware(serv)
-	mux.Handle("POST /dashboard", authMiddleware(http.HandlerFunc(Dashboard)))
 	return &Router{mux: mux, serv: serv}
 }
 
@@ -28,12 +31,31 @@ func (r *Router) Handler() http.Handler {
 }
 
 func (r *Router) AppendHandler(pathPattern string, handler http.HandlerFunc) {
-	r.mux.HandleFunc(pathPattern, handler)
+	limiter := auth.NewRateLimiter(rateLimitRequests, rateLimitWindow)
+	rateLimitMiddleware := auth.RateLimitMiddleware(limiter)
+	r.mux.Handle(pathPattern, rateLimitMiddleware(http.HandlerFunc(handler)))
+}
+func (r *Router) AppendProtectedHandler(pathPattern string, handler http.HandlerFunc) {
+	limiter := auth.NewRateLimiter(rateLimitRequests, rateLimitWindow)
+	rateLimitMiddleware := auth.RateLimitMiddleware(limiter)
+	authMiddleware := auth.NewAuthMiddleware(r.serv)
+	r.mux.Handle(pathPattern, rateLimitMiddleware(authMiddleware(http.HandlerFunc(handler))))
 }
 
 func (r *Router) AppendHandlerFromMap(routes map[string]http.HandlerFunc) {
+	limiter := auth.NewRateLimiter(rateLimitRequests, rateLimitWindow)
+	rateLimitMiddleware := auth.RateLimitMiddleware(limiter)
 	for pathPattern, handler := range routes {
-		r.mux.HandleFunc(pathPattern, handler)
+		r.mux.Handle(pathPattern, rateLimitMiddleware(http.HandlerFunc(handler)))
+	}
+}
+
+func (r *Router) AppendProtectedHandlerFromMap(routes map[string]http.HandlerFunc) {
+	limiter := auth.NewRateLimiter(rateLimitRequests, rateLimitWindow)
+	rateLimitMiddleware := auth.RateLimitMiddleware(limiter)
+	authMiddleware := auth.NewAuthMiddleware(r.serv)
+	for pathPattern, handler := range routes {
+		r.mux.Handle(pathPattern, rateLimitMiddleware(authMiddleware(http.HandlerFunc(handler))))
 	}
 }
 

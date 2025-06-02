@@ -6,7 +6,7 @@ import (
 	"gobackend/internal/api"
 	"gobackend/internal/auth"
 	"gobackend/internal/db/sqlc"
-	"gobackend/notes"
+	"gobackend/internal/notes"
 	"log"
 	"net/http"
 	"os"
@@ -68,6 +68,8 @@ func main() {
 	}
 
 	router.AppendHandlerFromMap(routesAuth)
+
+	router.AppendProtectedHandler("POST /dashboard", api.Dashboard)
 
 	log.Default().Println("Setting up routes...")
 	noteService := notes.NewService()

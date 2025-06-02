@@ -81,7 +81,7 @@ func (s *Service) Login(w http.ResponseWriter, r *http.Request) error {
 	email := r.FormValue("email")
 	password := r.FormValue("password")
 	userAgent := r.UserAgent()
-	ipAddress := r.RemoteAddr
+	ipAddress := utils.ExtractIPFromRemoteAddr(r.RemoteAddr)
 	user, err := s.repo.GetUserByEmail(email)
 	if err != nil {
 		return fmt.Errorf("error retrieving user: %w", err)
@@ -152,7 +152,7 @@ func (s *Service) Logout(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	userAgent := r.UserAgent()
-	ip := r.RemoteAddr
+	ip := utils.ExtractIPFromRemoteAddr(r.RemoteAddr)
 
 	err = s.repo.DeleteSessionsByDevice(r.Context(), userID, userAgent, ip)
 	if err != nil {
