@@ -2,50 +2,60 @@
 
 ```mermaid
 flowchart TD
-    A(POST /register) --> B(Validate username/password)
+    A(POST /register) --> B(Validate email/password)
     B --> C(Hash password)
-    C --> D(Store user in memory)
+    C --> D(Store user in database)
 
     E(POST /login) --> F(Validate credentials)
     F --> G(Generate Session Token)
     F --> H(Generate CSRF Token)
-    G --> I(Set session_token cookie)
-    H --> J(Set csrf_token cookie)
-    I --> K(Store tokens in user data)
-    J --> K(Store tokens in user data)
+    G --> I(Set HttpOnly session_token cookie)
+    H --> J(Return CSRF token in response body)
+    I --> K(Store tokens in database)
+    J --> K(Store tokens in database)
+    K --> L(Delete existing sessions for device)
 
-    L(POST /protected) --> M(Validate session_token cookie)
-    M --> N(Validate X-CSRF-Token header)
-    N --> O(Grant access)
+    M(POST /protected) --> N(AuthMiddleware: Validate session_token cookie)
+    N --> O(Get session from database)
+    O --> P(Validate X-CSRF-Token header matches stored token)
+    P --> Q(Grant access)
 
-    P(POST /logout) --> Q(Clear session_token cookie)
-    P --> R(Clear csrf_token cookie)
-    Q --> S(Clear tokens in user data)
-    R --> S(Clear tokens in user data)
+    R(POST /logout) --> S(Delete session from database)
+    S --> T(Clear session_token cookie)
 
     style A fill: #808080,stroke:#333
     style E fill: #808080,stroke:#333
-    style L fill: #808080,stroke:#333
-    style P fill: #808080,stroke:#333
+    style M fill: #808080,stroke:#333
+    style R fill: #808080,stroke:#333
 ```
 
-## Key Components
+## Key Feature Components
 
 1. **Session Token**:
    - Stored in HttpOnly cookie
-   - Validated against server-side stored token
+   - Validated against database-stored token
    - Required for all authenticated requests
+   - Supports multiple concurrent sessions across devices
 
-2. **CSRF Token**:
-   - Stored in regular cookie
+2. **CSRF Protection**:
+   - Session-bound CSRF token stored in database (stateful)
    - Must be sent in X-CSRF-Token header
-   - Validated against server-side stored token
+   - Validated against database-stored token
    - Protects against CSRF attacks
 
 3. **Password Security**:
    - Hashed using bcrypt
    - Minimum 6 characters enforced
    - Never stored in plaintext
+
+4. **Auth Middleware**:
+   - Centralized authentication check
+   - Validates session and CSRF tokens
+   - Adds user ID to request context
+
+5. **Dynamic Routing**:
+   - Handler registry allows adding routes dynamically
+   - Middleware applied consistently
 
 ## Testing Authentication
 
@@ -65,12 +75,20 @@ curl -X POST http://localhost:8080/login \
              -d "username=myuser" -d "password=password123" -c cookies.txt
 ```
 
-Accesing protected endpoint with CSRF token:
+Accessing protected endpoint with CSRF token:
 ```
-curl -X POST http://localhost:8080/protected \
-           -H "X-CSRF-Token:<CSRFToken>" \
-           -d "username=myuser" \
-           -b cookies.txt
+# First login to get CSRF token
+curl -X POST http://localhost:8080/login \
+     -d "email=user@example.com" -d "password=password123" \
+     -c cookies.txt -o response.json
+
+# Extract CSRF token from response
+CSRF_TOKEN=$(jq -r '.csrf_token' response.json)
+
+# Access protected endpoint
+curl -X POST http://localhost:8080/dashboard \
+     -H "X-CSRF-Token:$CSRF_TOKEN" \
+     -b cookies.txt
 ```
 
 Logout:
