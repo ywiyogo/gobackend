@@ -1,5 +1,5 @@
-# Go Backend 
-A simple backend with REST API based on Go and its standard libary net/http.
+# Modern Go Backend 
+A simple backend with REST API based on Go and its standard library net/http with hot reloading.
 
 Stack dependency:
 * Go
@@ -8,6 +8,11 @@ Stack dependency:
 * golang-migrate
 * sqlc
 * Air
+* Make
+
+Features:
+* Authentication and protected endpoints
+* Rate Limiter
 
 ## Getting Started
 
@@ -19,7 +24,7 @@ migrate -path internal/db/migrations -database "postgres://${DB_USER}$:${DB_PASS
 
 Stop and clean the docker compose images:
 ```
-docker compose down --rmi all -v
+docker compose down --rmi local -v
 ```
 
 Check the database table in the docker compose:
@@ -37,4 +42,9 @@ Start the backend app without the docker compose and database:
 ```
 make build
 make run
+```
+
+Run the test cases:
+```
+go test -v ./internal/auth/
 ```

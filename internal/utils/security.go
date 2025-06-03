@@ -54,3 +54,15 @@ func ExtractIPFromRemoteAddr(remoteAddr string) string {
 	// Fallback for cases where SplitHostPort fails (e.g., no port present)
 	return strings.Split(remoteAddr, ":")[0]
 }
+
+// IsValidEmail performs basic email format validation
+func IsValidEmail(email string) bool {
+	// Simple regex for basic email validation
+	if len(email) > 254 || len(email) < 3 {
+		return false
+	}
+	if !strings.Contains(email, "@") || !strings.Contains(email, ".") {
+		return false
+	}
+	return true
+}

@@ -31,8 +31,13 @@ func (s *Service) Register(w http.ResponseWriter, r *http.Request) error {
 		http.Error(w, "Email are required", http.StatusBadRequest)
 		return fmt.Errorf("email is required")
 	}
-	password := r.FormValue("password")
 
+	if !utils.IsValidEmail(email) {
+		http.Error(w, "Invalid email format", http.StatusBadRequest)
+		return fmt.Errorf("invalid email format: %s", email)
+	}
+
+	password := r.FormValue("password")
 	if password == "" || len(password) < 6 {
 		http.Error(w, "Password (min 6 chars) are required", http.StatusBadRequest)
 		return fmt.Errorf("password is required and must be at least 6 characters long")
