@@ -1,4 +1,4 @@
--- name: CreateUser :one
+-- name: CreateUserWithPassword :one
 INSERT INTO users (id, email, password_hash, created_at, updated_at)
 VALUES (gen_random_uuid(), $1, $2, NOW(), NOW())
 RETURNING *;
@@ -42,3 +42,29 @@ WHERE user_id = $1 AND user_agent = $2 AND ip = $3;
 SELECT csrf_token FROM sessions
 WHERE session_token = $1
 LIMIT 1;
+
+-- name: CreateUserWithOtp :one
+INSERT INTO users (id, email, otp_code, otp_expires_at, created_at, updated_at)
+VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW())
+RETURNING *;
+
+-- name: SetUserOTP :exec
+UPDATE users
+SET otp_code = $1,
+    otp_expires_at = $2,
+    updated_at = NOW()
+WHERE id = $3;
+
+-- name: GetUserOTP :one
+SELECT otp_code, otp_expires_at
+FROM users
+WHERE id = $1
+  AND otp_code IS NOT NULL
+  AND otp_expires_at > NOW();
+
+-- name: ClearUserOTP :exec
+UPDATE users
+SET otp_code = NULL,
+    otp_expires_at = NULL,
+    updated_at = NOW()
+WHERE id = $1;

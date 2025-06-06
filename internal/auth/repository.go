@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
@@ -21,7 +22,7 @@ const pkgName = "auth"
 
 // AuthRepository defines the interface for user data operations
 type AuthRepository interface {
-	CreateUser(user *sqlc.User) error
+	CreateUserWithPassword(user *sqlc.User) error
 	GetUserByEmail(email string) (*sqlc.User, error)
 	CreateSession(ctx context.Context, userID uuid.UUID, sessionToken string, csrfToken string, userAgent string, ip string, expiresAt time.Time) (sqlc.Session, error)
 	GetSessionRowByToken(ctx context.Context, token string) (sqlc.Session, error)
@@ -31,6 +32,12 @@ type AuthRepository interface {
 	GetCsrfTokenBySessionToken(ctx context.Context, sessionToken string) (string, error)
 	DeleteSessionByUserID(ctx context.Context, userID uuid.UUID) error
 	DeleteSessionsByDevice(ctx context.Context, userID uuid.UUID, userAgent string, ip string) error
+	// OTP methods
+	CreateUserWithOtp(user *sqlc.User) error
+	SetUserOTP(ctx context.Context, userID uuid.UUID, otpCode string, expiresAt time.Time) error
+	GetUserOTP(ctx context.Context, userID uuid.UUID) (string, time.Time, error)
+	ClearUserOTP(ctx context.Context, userID uuid.UUID) error
+	ValidateOTP(ctx context.Context, userID uuid.UUID, otp string) (bool, error)
 }
 
 // UserRepo implements AuthRepository
@@ -44,14 +51,14 @@ func NewAuthRepository(queries *sqlc.Queries) AuthRepository {
 }
 
 // CreateUser adds a new user to the database
-func (r *UserRepo) CreateUser(user *sqlc.User) error {
+func (r *UserRepo) CreateUserWithPassword(user *sqlc.User) error {
 	log.Debug().
 		Str("pkg", pkgName).
 		Str("method", "CreateUser").
 		Str("email", user.Email).
 		Msg("DB operation started")
 
-	_, err := r.queries.CreateUser(context.Background(), sqlc.CreateUserParams{
+	_, err := r.queries.CreateUserWithPassword(context.Background(), sqlc.CreateUserWithPasswordParams{
 		Email:        user.Email,
 		PasswordHash: user.PasswordHash,
 	})
@@ -71,6 +78,36 @@ func (r *UserRepo) CreateUser(user *sqlc.User) error {
 		Str("email", user.Email).
 		Msg("DB operation successful")
 	return nil
+}
+
+// ValidateOTP checks if the provided OTP matches the stored one and is not expired
+func (r *UserRepo) ValidateOTP(ctx context.Context, userID uuid.UUID, otp string) (bool, error) {
+	log.Debug().
+		Str("pkg", pkgName).
+		Str("method", "ValidateOTP").
+		Str("userID", userID.String()).
+		Msg("OTP validation started")
+
+	otpRecord, err := r.queries.GetUserOTP(ctx, userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to get user OTP: %w", err)
+	}
+
+	// Convert pgtype.Text to string
+	var storedOTP string
+	if err := otpRecord.OtpCode.Scan(&storedOTP); err != nil {
+		return false, fmt.Errorf("failed to read OTP code: %w", err)
+	}
+
+	// Check if OTP is valid and not expired
+	if storedOTP == "" || !otpRecord.OtpExpiresAt.Valid || time.Now().After(otpRecord.OtpExpiresAt.Time) {
+		return false, nil
+	}
+
+	return storedOTP == otp, nil
 }
 
 // GetUserByEmail retrieves a user by their email
@@ -254,4 +291,60 @@ func (r *UserRepo) GetCsrfTokenBySessionToken(ctx context.Context, sessionToken 
 		return "", fmt.Errorf("failed to get CSRF token by session token: %w", err)
 	}
 	return csrfToken, nil
+}
+
+func (r *UserRepo) CreateUserWithOtp(user *sqlc.User) error {
+	_, err := r.queries.CreateUserWithOtp(context.Background(), sqlc.CreateUserWithOtpParams{
+		Email:        user.Email,
+		OtpCode:      pgtype.Text{String: user.OtpCode.String, Valid: user.OtpCode.String != ""},
+		OtpExpiresAt: pgtype.Timestamptz{Time: user.OtpExpiresAt.Time, Valid: !user.OtpExpiresAt.Time.IsZero()},
+	})
+	if err != nil {
+		log.Debug().
+			Str("pkg", pkgName).
+			Str("method", "CreateUserWithOtp").
+			Str("email", user.Email).
+			Err(err).
+			Msg("DB operation failed")
+		return fmt.Errorf("failed to create user with OTP: %w", err)
+	}
+	return nil
+}
+
+func (r *UserRepo) SetUserOTP(ctx context.Context, userID uuid.UUID, otpCode string, expiresAt time.Time) error {
+	err := r.queries.SetUserOTP(ctx, sqlc.SetUserOTPParams{
+		OtpCode: pgtype.Text{
+			String: otpCode,
+			Valid:  otpCode != "",
+		},
+		OtpExpiresAt: pgtype.Timestamptz{
+			Time:  expiresAt,
+			Valid: !expiresAt.IsZero(),
+		},
+		ID: userID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to set OTP: %w", err)
+	}
+	return nil
+}
+
+func (r *UserRepo) GetUserOTP(ctx context.Context, userID uuid.UUID) (string, time.Time, error) {
+	otpData, err := r.queries.GetUserOTP(ctx, userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", time.Time{}, nil
+		}
+		return "", time.Time{}, fmt.Errorf("failed to get OTP: %w", err)
+	}
+
+	return otpData.OtpCode.String, otpData.OtpExpiresAt.Time, nil
+}
+
+func (r *UserRepo) ClearUserOTP(ctx context.Context, userID uuid.UUID) error {
+	err := r.queries.ClearUserOTP(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("failed to clear OTP: %w", err)
+	}
+	return nil
 }

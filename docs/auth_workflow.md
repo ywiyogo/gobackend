@@ -1,36 +1,46 @@
 # Authentication Workflow
 
+## Authentication Flows
 ```mermaid
 flowchart TD
-    A(POST /register) --> B(Validate email/password)
-    B --> C(Hash password)
-    C --> D(Store user in database)
+    A(POST /register) --> B{OTP_ENABLED?}
+    B -->|Yes| C(Generate 6-digit OTP)
+    C --> D(Store OTP with 5min expiry)
+    B -->|No| E(Validate email/password)
+    E --> F(Hash password)
+    F --> G(Store user in database)
 
-    E(POST /login) --> F(Validate credentials)
-    F --> G(Generate Session Token)
-    F --> H(Generate CSRF Token)
-    G --> I(Set HttpOnly session_token cookie)
-    H --> J(Return CSRF token in response body)
-    I --> K(Store tokens in database)
-    J --> K(Store tokens in database)
-    K --> L(Delete existing sessions for device)
+    H(POST /login) --> I{OTP_ENABLED?}
+    I -->|Yes| J(Generate 6-digit OTP)
+    I -->|No| K(Validate credentials)
+    J --> L(Generate Session Token)
+    J --> M(Generate CSRF Token)
+    K --> L(Generate Session Token)
+    K --> M(Generate CSRF Token)
+    L --> O(Set HttpOnly session_token cookie)
+    M --> P(Return CSRF token in response body)
+    O --> Q(Store tokens in database)
+    P --> Q(Store tokens in database)
+    Q --> R(Delete existing sessions for device)
 
-    M(POST /protected) --> N(RateLimitMiddleware: Check request limit)
-    N --> O(AuthMiddleware: Validate session_token cookie)
-    O --> P(Get session from database)
-    O --> P(Validate X-CSRF-Token header matches stored token)
-    P --> Q(Grant access)
+    S(POST /protected) --> T(RateLimitMiddleware: Check request limit)
+    T --> U(AuthMiddleware: Validate session_token cookie)
+    U --> V(Get session from database)
+    U --> V(Validate X-CSRF-Token header matches stored token)
+    V --> W(Grant access)
 
-    R(POST /logout) --> S(Delete session from database)
-    S --> T(Clear session_token cookie)
+    X(POST /logout) --> Y(Delete session from database)
+    Y --> Z(Clear session_token cookie)
 
     style A fill: #808080,stroke:#333
-    style E fill: #808080,stroke:#333
-    style M fill: #808080,stroke:#333
-    style R fill: #808080,stroke:#333
+    style H fill: #808080,stroke:#333
+    style S fill: #808080,stroke:#333
+    style X fill: #808080,stroke:#333
 ```
 
 ## Key Feature Components
+
+### Common Components
 
 1. **Session Token**:
    - Stored in HttpOnly cookie
@@ -49,7 +59,23 @@ flowchart TD
    - Minimum 6 characters enforced
    - Never stored in plaintext
 
-4. **Auth Middleware**:
+### OTP-Specific Components
+
+4. **OTP Generation**:
+   - 6-digit numeric codes
+   - 5 minute expiration period
+   - Stored securely in database
+   - Automatically cleared after use or expiration
+
+5. **OTP Verification**:
+   - Requires valid session token from cookie
+   - Compares against stored OTP
+   - Enforces expiration check
+   - Clears OTP after successful verification
+
+### Common Components
+
+6. **Auth Middleware**:
    - Centralized authentication check
    - Validates session and CSRF tokens
    - Adds user ID to request context
@@ -60,19 +86,17 @@ flowchart TD
 
 ## Testing Authentication
 
+### Email and Password based Authentication
 Registration:
 ```
-curl -X POST http://localhost:8080/register \ 
+curl http://localhost:8080/register \ 
              -d "username=myuser" -d "password=password123"
 ```
-or for more verbose information
-```
-curl -X POST -F "username=myuser" -F "password=password123" -v http://localhost:8080/register
-```
+or for more verbose information add `-v`.
 
 Login:
 ```
-curl -X POST http://localhost:8080/login \
+curl http://localhost:8080/login \
              -d "username=myuser" -d "password=password123" -c cookies.txt
 ```
 
@@ -99,3 +123,65 @@ curl -X POST http://localhost:8080/logout \
            -d "username=myuser" \
            -b cookies.txt
 ```
+
+Note, `curl` automatically uses POST method when sending data (-d flag). The -X POST flag is redundant in this case but doesn't affect functionality.
+
+### Email and OTP based Authentication
+
+When OTP_ENABLED=true, authentication uses one-time passwords instead of traditional passwords:
+
+1. **Registration**:
+   - Creates user record with email only
+   - Generates initial OTP
+   - Returns OTP code in response
+
+2. **Login**:
+   - Generates new OTP if none provided
+   - Verifies OTP if provided
+   - Creates session on successful verification
+
+3. **OTP Verification**:
+   - Required before accessing protected routes
+   - Validates OTP against stored value
+   - Enforces 5-minute expiration
+
+Example flows:
+
+**Registration**:
+```
+curl http://localhost:8080/register \
+     -d "email=myuser@example.com" \
+     -c "cookies.txt"
+# Response includes OTP code
+```
+
+**Login (first step - get OTP)**:
+```
+curl http://localhost:8080/login \
+     -d "email=myuser@example.com" \
+     -c "cookies.txt"
+# Response includes new OTP code
+```
+
+**OTP Verification**:
+```
+curl http://localhost:8080/verify-otp \
+     -d "email=myuser@example.com" \
+     -d "otp_code=123456" \
+     -b "cookies.txt"
+# On success, returns auth token
+```
+
+**Protected Access**:
+```
+curl http://localhost:8080/protected \
+     -H "X-CSRF-Token:..." \
+     -b "cookies.txt"
+```
+
+**Logout**:
+```
+curl http://localhost:8080/logout \
+     -d "email=myuser@example.com" \
+     -b "cookies.txt"
+# Clears session and OTP data

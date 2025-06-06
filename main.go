@@ -62,9 +62,10 @@ func main() {
 	router.AppendHandler("GET /", Home)
 
 	routesAuth := map[string]http.HandlerFunc{
-		"POST /register": userHandler.Register,
-		"POST /login":    userHandler.Login,
-		"POST /logout":   userHandler.Logout,
+		"POST /register":   userHandler.Register,
+		"POST /login":      userHandler.Login,
+		"POST /logout":     userHandler.Logout,
+		"POST /verify-otp": userHandler.VerifyOTP,
 	}
 
 	router.AppendHandlerFromMap(routesAuth)
