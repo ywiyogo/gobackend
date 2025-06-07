@@ -3,6 +3,8 @@ package auth
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/rs/zerolog/log"
 )
@@ -26,7 +28,18 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 			Str("method", "Register").
 			Err(err).
 			Msg("Registration failed")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+		// Handle different error types with appropriate status codes
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "email is required") ||
+			strings.Contains(errMsg, "invalid email format") ||
+			strings.Contains(errMsg, "invalid password format") {
+			http.Error(w, errMsg, http.StatusBadRequest)
+		} else if strings.Contains(errMsg, "email already exists") {
+			http.Error(w, errMsg, http.StatusConflict)
+		} else {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
 		return
 	}
 }
@@ -42,7 +55,15 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 			Str("method", "Login").
 			Err(err).
 			Msg("Login failed")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+		// Handle different error types with appropriate status codes
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "invalid password") ||
+			strings.Contains(errMsg, "invalid email") {
+			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		} else {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
 		return
 	}
 }
@@ -76,16 +97,28 @@ func (h *Handler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get CSRF token for the new session
+	csrfToken, err := h.service.GetCSRFTokenBySessionToken(r.Context(), newSessionToken)
+	if err != nil {
+		log.Error().
+			Str("pkg", "auth").
+			Str("method", "VerifyOTP").
+			Err(err).
+			Msg("Error retrieving CSRF token")
+		http.Error(w, "Error setting up session", http.StatusInternalServerError)
+		return
+	}
+
 	http.SetCookie(w, &http.Cookie{
 		Name:     "session_token",
 		Value:    newSessionToken,
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   os.Getenv("ENV") == "production", // Use secure cookies in production
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   86400,
 	})
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "OTP verified successfully, new session token set in cookie")
+	fmt.Fprintf(w, "OTP verified successfully, new session token set in cookie. CSRF: %s", csrfToken)
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {

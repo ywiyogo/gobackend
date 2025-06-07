@@ -76,7 +76,7 @@ func NewAuthMiddleware(service *Service) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			userID, err := service.repo.Authorize(r)
 			if err != nil {
-				log.Debug().
+				log.Error().
 					Str("location", "NewAuthMiddleware").
 					Str("error", err.Error()).
 					Msg("Authorization failed")

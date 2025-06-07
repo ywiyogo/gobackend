@@ -127,16 +127,6 @@ userID, err := repo.Authorize(request)
 err := repo.DeleteSessionsByDevice(ctx, userID, userAgent, ip)
 ```
 
-## Logging Pattern
-All operations include structured logging:
-```go
-log.Debug().
-    Str("pkg", "auth").
-    Str("method", "CreateUser").
-    Str("email", user.Email).
-    Msg("DB operation started")
-```
-
 ## Class Diagram
 ```mermaid
 classDiagram
@@ -148,7 +138,7 @@ classDiagram
         +Authorize(*http.Request) (uuid.UUID, error)
         +DeleteSessionsByDevice(...) error
     }
-    
+
     class UserRepo {
         -queries *sqlc.Queries
         +CreateUser(*sqlc.User) error
@@ -156,12 +146,12 @@ classDiagram
         +CreateSession(...) (sqlc.Session, error)
         +Authorize(*http.Request) (uuid.UUID, error)
     }
-    
+
     class sqlc.Queries {
         +CreateUser(context, params) (sqlc.User, error)
         +CreateSession(context, params) (sqlc.Session, error)
         +GetSessionRowBySessionToken(context, token) (sqlc.Session, error)
     }
-    
+
     UserRepo --|> AuthRepository : implements
     UserRepo --> sqlc.Queries : depends on

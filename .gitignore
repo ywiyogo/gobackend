@@ -1,3 +1,5 @@
 tmp/
 .env
 internal/db/sqlc/
+
+*password*

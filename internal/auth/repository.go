@@ -32,6 +32,8 @@ type AuthRepository interface {
 	GetCsrfTokenBySessionToken(ctx context.Context, sessionToken string) (string, error)
 	DeleteSessionByUserID(ctx context.Context, userID uuid.UUID) error
 	DeleteSessionsByDevice(ctx context.Context, userID uuid.UUID, userAgent string, ip string) error
+	UpdateSessionToken(ctx context.Context, sessionID int64, sessionToken string, expiresAt time.Time) error
+	UserExistsByEmail(ctx context.Context, email string) (bool, error)
 	// OTP methods
 	CreateUserWithOtp(user *sqlc.User) error
 	SetUserOTP(ctx context.Context, userID uuid.UUID, otpCode string, expiresAt time.Time) error
@@ -52,18 +54,12 @@ func NewAuthRepository(queries *sqlc.Queries) AuthRepository {
 
 // CreateUser adds a new user to the database
 func (r *UserRepo) CreateUserWithPassword(user *sqlc.User) error {
-	log.Debug().
-		Str("pkg", pkgName).
-		Str("method", "CreateUser").
-		Str("email", user.Email).
-		Msg("DB operation started")
-
 	_, err := r.queries.CreateUserWithPassword(context.Background(), sqlc.CreateUserWithPasswordParams{
 		Email:        user.Email,
 		PasswordHash: user.PasswordHash,
 	})
 	if err != nil {
-		log.Debug().
+		log.Error().
 			Str("pkg", pkgName).
 			Str("method", "CreateUser").
 			Str("email", user.Email).
@@ -72,21 +68,11 @@ func (r *UserRepo) CreateUserWithPassword(user *sqlc.User) error {
 		return fmt.Errorf("failed to create user: %w", err)
 	}
 
-	log.Debug().
-		Str("pkg", pkgName).
-		Str("method", "CreateUser").
-		Str("email", user.Email).
-		Msg("DB operation successful")
 	return nil
 }
 
 // ValidateOTP checks if the provided OTP matches the stored one and is not expired
 func (r *UserRepo) ValidateOTP(ctx context.Context, userID uuid.UUID, otp string) (bool, error) {
-	log.Debug().
-		Str("pkg", pkgName).
-		Str("method", "ValidateOTP").
-		Str("userID", userID.String()).
-		Msg("OTP validation started")
 
 	otpRecord, err := r.queries.GetUserOTP(ctx, userID)
 	if err != nil {
@@ -112,20 +98,11 @@ func (r *UserRepo) ValidateOTP(ctx context.Context, userID uuid.UUID, otp string
 
 // GetUserByEmail retrieves a user by their email
 func (r *UserRepo) GetUserByEmail(email string) (*sqlc.User, error) {
-	log.Debug().
-		Str("pkg", pkgName).
-		Str("method", "GetUserByEmail").
-		Str("email", email).
-		Msg("DB query started")
 
 	dbUser, err := r.queries.GetUserByEmail(context.Background(), email)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			log.Debug().
-				Str("pkg", pkgName).
-				Str("method", "GetUserByEmail").
-				Str("email", email).
-				Msg("User not found")
+			// User not found is not an error condition for user existence checks
 			return nil, nil
 		}
 		log.Error().
@@ -137,16 +114,14 @@ func (r *UserRepo) GetUserByEmail(email string) (*sqlc.User, error) {
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 
-	log.Debug().
-		Str("pkg", pkgName).
-		Str("method", "GetUserByEmail").
-		Str("email", dbUser.Email).
-		Str("userID", dbUser.ID.String()).
-		Msg("DB query successful")
 	return &sqlc.User{
 		ID:           dbUser.ID,
 		Email:        dbUser.Email,
 		PasswordHash: dbUser.PasswordHash,
+		OtpCode:      dbUser.OtpCode,
+		OtpExpiresAt: dbUser.OtpExpiresAt,
+		CreatedAt:    dbUser.CreatedAt,
+		UpdatedAt:    dbUser.UpdatedAt,
 	}, nil
 }
 
@@ -170,26 +145,19 @@ func (r *UserRepo) Authorize(req *http.Request) (uuid.UUID, error) {
 	// Get session token from cookie
 	sessionToken, err := req.Cookie("session_token")
 	if err != nil || sessionToken.Value == "" {
-		log.Debug().
-			Str("pkg", pkgName).
-			Str("method", "Authorize").
-			Msg("Session token not found")
+
 		return uuid.UUID{}, fmt.Errorf("unauthorized access: missing session cookie")
 	}
 
 	// Validate session from database
 	dbSession, err := r.queries.GetSessionRowBySessionToken(req.Context(), sessionToken.Value)
 	if err != nil {
-		log.Debug().
-			Str("pkg", pkgName).
-			Str("method", "Authorize").
-			Err(err).
-			Msg("Error retrieving session")
+
 		return uuid.UUID{}, fmt.Errorf("unauthorized access: %w", err)
 	}
 
 	if time.Now().After(dbSession.ExpiresAt) {
-		log.Debug().
+		log.Error().
 			Str("pkg", pkgName).
 			Str("method", "Authorize").
 			Time("expiredAt", dbSession.ExpiresAt).
@@ -201,7 +169,7 @@ func (r *UserRepo) Authorize(req *http.Request) (uuid.UUID, error) {
 	// CSRF token is expected to be in the header for security reasons
 	csrfDB, err := r.queries.GetCsrfTokenBySessionToken(req.Context(), sessionToken.Value)
 	if err != nil {
-		log.Debug().
+		log.Error().
 			Str("pkg", pkgName).
 			Str("method", "Authorize").
 			Err(err).
@@ -210,18 +178,11 @@ func (r *UserRepo) Authorize(req *http.Request) (uuid.UUID, error) {
 	}
 	csrfToken := req.Header.Get("X-CSRF-Token")
 	if csrfToken != csrfDB {
-		log.Debug().
+		log.Error().
 			Str("location", "Authorize").
 			Msg("CSRF token not found")
 		return uuid.UUID{}, fmt.Errorf("%w: invalid CSRF token", ErrAuth)
 	}
-
-	log.Debug().
-		Str("pkg", pkgName).
-		Str("method", "Authorize").
-		Str("session token", sessionToken.Value).
-		Msg("Session authorized successfully")
-
 	return dbSession.UserID, nil
 }
 
@@ -257,13 +218,6 @@ func (r *UserRepo) DeleteSessionByUserID(ctx context.Context, userID uuid.UUID) 
 }
 
 func (r *UserRepo) DeleteSessionsByDevice(ctx context.Context, userID uuid.UUID, userAgent string, ip string) error {
-	log.Debug().
-		Str("pkg", pkgName).
-		Str("method", "DeleteSessionsByDevice").
-		Str("userID", userID.String()).
-		Str("userAgent", userAgent).
-		Str("ip", ip).
-		Msg("Deleting sessions by device")
 
 	numRows, err := r.queries.DeleteSessionsByDevice(ctx, sqlc.DeleteSessionsByDeviceParams{
 		UserID:    userID,
@@ -293,6 +247,32 @@ func (r *UserRepo) GetCsrfTokenBySessionToken(ctx context.Context, sessionToken 
 	return csrfToken, nil
 }
 
+func (r *UserRepo) UpdateSessionToken(ctx context.Context, sessionID int64, sessionToken string, expiresAt time.Time) error {
+	err := r.queries.UpdateSessionToken(ctx, sqlc.UpdateSessionTokenParams{
+		ID:           sessionID,
+		SessionToken: sessionToken,
+		ExpiresAt:    expiresAt,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update session token: %w", err)
+	}
+	return nil
+}
+
+func (r *UserRepo) UserExistsByEmail(ctx context.Context, email string) (bool, error) {
+	exists, err := r.queries.UserExistsByEmail(ctx, email)
+	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "UserExistsByEmail").
+			Str("email", email).
+			Err(err).
+			Msg("DB query failed")
+		return false, fmt.Errorf("failed to check user existence: %w", err)
+	}
+	return exists, nil
+}
+
 func (r *UserRepo) CreateUserWithOtp(user *sqlc.User) error {
 	_, err := r.queries.CreateUserWithOtp(context.Background(), sqlc.CreateUserWithOtpParams{
 		Email:        user.Email,
@@ -300,7 +280,7 @@ func (r *UserRepo) CreateUserWithOtp(user *sqlc.User) error {
 		OtpExpiresAt: pgtype.Timestamptz{Time: user.OtpExpiresAt.Time, Valid: !user.OtpExpiresAt.Time.IsZero()},
 	})
 	if err != nil {
-		log.Debug().
+		log.Error().
 			Str("pkg", pkgName).
 			Str("method", "CreateUserWithOtp").
 			Str("email", user.Email).

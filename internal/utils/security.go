@@ -3,10 +3,8 @@ package utils
 import (
 	"crypto/rand"
 	"encoding/base64"
-	mrand "math/rand"
 	"net"
 	"strings"
-	"time"
 
 	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/bcrypt"
@@ -69,15 +67,30 @@ func IsValidEmail(email string) bool {
 	return true
 }
 
-// GenerateOTP generates a random numeric OTP code of specified length
-// Uses math/rand for simplicity since OTPs don't require cryptographic security
+// GenerateOTP generates a cryptographically secure random numeric OTP code of specified length
+// Uses crypto/rand to ensure the OTP is unpredictable and secure
 // Note: For production use, consider rate limiting and other security measures
 func GenerateOTP(length int) string {
 	const digits = "0123456789"
 	otp := make([]byte, length)
-	mrand.Seed(time.Now().UnixNano())
+
+	// Generate random bytes
+	randomBytes := make([]byte, length)
+	if _, err := rand.Read(randomBytes); err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "GenerateOTP").
+			Err(err).Msg("Failed to generate random bytes for OTP")
+		// Fallback to a simple pattern (should not happen in normal operation)
+		for i := range otp {
+			otp[i] = '0'
+		}
+		return string(otp)
+	}
+
+	// Convert random bytes to digits
 	for i := range otp {
-		otp[i] = digits[mrand.Intn(len(digits))]
+		otp[i] = digits[randomBytes[i]%10]
 	}
 	return string(otp)
 }

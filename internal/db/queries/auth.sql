@@ -7,6 +7,9 @@ RETURNING *;
 SELECT * FROM users
 WHERE email = $1 LIMIT 1;
 
+-- name: UserExistsByEmail :one
+SELECT EXISTS(SELECT 1 FROM users WHERE email = $1);
+
 -- name: CreateSession :one
 INSERT INTO sessions (user_id, session_token, csrf_token, user_agent, ip, expires_at)
 VALUES ($1, $2, $3, $4, $5, $6)
@@ -67,4 +70,10 @@ UPDATE users
 SET otp_code = NULL,
     otp_expires_at = NULL,
     updated_at = NOW()
+WHERE id = $1;
+
+-- name: UpdateSessionToken :exec
+UPDATE sessions
+SET session_token = $2,
+    expires_at = $3
 WHERE id = $1;

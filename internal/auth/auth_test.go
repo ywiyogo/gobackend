@@ -41,9 +41,19 @@ func (m *MockAuthRepository) Authorize(r *http.Request) (uuid.UUID, error) {
 	return args.Get(0).(uuid.UUID), args.Error(1)
 }
 
-func (m *MockAuthRepository) DeleteSessionsByDevice(ctx context.Context, userID uuid.UUID, userAgent string, ipAddress string) error {
-	args := m.Called(ctx, userID, userAgent, ipAddress)
+func (m *MockAuthRepository) DeleteSessionsByDevice(ctx context.Context, userID uuid.UUID, userAgent string, ip string) error {
+	args := m.Called(ctx, userID, userAgent, ip)
 	return args.Error(0)
+}
+
+func (m *MockAuthRepository) UpdateSessionToken(ctx context.Context, sessionID int64, sessionToken string, expiresAt time.Time) error {
+	args := m.Called(ctx, sessionID, sessionToken, expiresAt)
+	return args.Error(0)
+}
+
+func (m *MockAuthRepository) UserExistsByEmail(ctx context.Context, email string) (bool, error) {
+	args := m.Called(ctx, email)
+	return args.Bool(0), args.Error(1)
 }
 
 func (m *MockAuthRepository) DeleteSessionByUserID(ctx context.Context, userID uuid.UUID) error {

@@ -55,48 +55,52 @@ func (s *Service) VerifyOTP(ctx context.Context, sessionToken string, otpCode st
 		return "", fmt.Errorf("invalid OTP code")
 	}
 
-	// Generate auth token
-	authToken := uuid.New().String()
+	// Generate new session token after successful OTP verification
+	newSessionToken, err := utils.GenerateSecureToken(32)
+	if err != nil {
+		return "", fmt.Errorf("error generating new session token: %w", err)
+	}
 
-	return authToken, nil
+	// Update the session with the new token and extend expiration
+	newExpiresAt := time.Now().Add(24 * time.Hour)
+	err = s.repo.UpdateSessionToken(ctx, session.ID, newSessionToken, newExpiresAt)
+	if err != nil {
+		return "", fmt.Errorf("error updating session: %w", err)
+	}
+
+	return newSessionToken, nil
 }
 
 func (s *Service) Register(w http.ResponseWriter, r *http.Request) error {
 	email := r.FormValue("email")
 	if email == "" {
-		http.Error(w, "Email are required", http.StatusBadRequest)
 		return fmt.Errorf("email is required")
 	}
 	fmt.Println("Registering user with email:", email)
 	if !utils.IsValidEmail(email) {
-		http.Error(w, "Invalid email format", http.StatusBadRequest)
 		return fmt.Errorf("invalid email format: %s", email)
 	}
 
 	// Check if email already exists
-	existingUser, err := s.repo.GetUserByEmail(email)
+	userExists, err := s.repo.UserExistsByEmail(r.Context(), email)
 	if err != nil {
-		http.Error(w, "Database server internal error", http.StatusInternalServerError)
 		return fmt.Errorf("error checking existing user: %w", err)
 	}
 
 	if os.Getenv("OTP_ENABLED") == "true" {
-		// If OTP is enabled, create user without password, but OTP
+		// OTP flow - create user with OTP and temporary session
 		otpCode := s.GenerateAndStoreOTP(r)
-
 		if otpCode == "" {
-			http.Error(w, "Error generating OTP", http.StatusInternalServerError)
 			return fmt.Errorf("error generating OTP: %w", err)
 		}
 
-		// If user doesn't exist, create a new user with OTP
-		// fmt.Fprintf(w, "OTP sent to %s: %s\n", email, otpCode)
+		// Generate session tokens for OTP verification
 		sessionToken, csrfToken, err := s.GenerateSessionTokens(r)
 		if sessionToken == "" || csrfToken == "" || err != nil {
-			http.Error(w, "Error generating session tokens", http.StatusInternalServerError)
 			return fmt.Errorf("error generating session tokens: %w. sessionToken:%s, csrfToken:%s", err, sessionToken, csrfToken)
 		}
-		// Do not call fmt.Fprintf with http.ResponseWriter, otherwise SetCookie won't work
+
+		// Set temporary session cookie for OTP verification
 		http.SetCookie(w, &http.Cookie{
 			Name:     "session_token",
 			Value:    sessionToken,
@@ -108,42 +112,42 @@ func (s *Service) Register(w http.ResponseWriter, r *http.Request) error {
 		fmt.Fprintf(w, "Setting cookie with session token: %s, CSRF: %s.\n OTP: %s", sessionToken, csrfToken, otpCode)
 		return nil
 	} else {
-		if existingUser != nil {
-			http.Error(w, "Email already exists", http.StatusConflict)
+		// Password flow - check if user already exists
+		if userExists {
 			return fmt.Errorf("email already exists: %s", email)
 		}
+
 		password := r.FormValue("password")
 		if password == "" || len(password) < 6 {
-			http.Error(w, "Password (min 6 chars) are required", http.StatusBadRequest)
 			return fmt.Errorf("invalid password format")
 		}
+
 		// Hash the password
 		hashPassword, err := utils.HashPassword(password)
 		if err != nil {
-			http.Error(w, "Error hashing password", http.StatusInternalServerError)
 			return fmt.Errorf("error hashing password: %w", err)
 		}
+
 		// Convert to pgtype.Text
 		passwordHash := pgtype.Text{}
 		if err := passwordHash.Scan(hashPassword); err != nil {
-			http.Error(w, "Error processing password", http.StatusInternalServerError)
 			return fmt.Errorf("error processing password: %w", err)
 		}
 
-		// Create new user
-		existingUser := &sqlc.User{
+		// Create new user with password
+		newUser := &sqlc.User{
 			Email:        email,
 			PasswordHash: passwordHash,
 		}
-		err = s.repo.CreateUserWithPassword(existingUser)
+		err = s.repo.CreateUserWithPassword(newUser)
 		if err != nil {
-			http.Error(w, "Error registering user", http.StatusInternalServerError)
 			return fmt.Errorf("error registering user: %w", err)
 		}
-		// registration with password doesn't need session tokens, since it's handled by the login flow
-	}
 
-	return nil
+		// Password registration doesn't create session - user must login separately
+		fmt.Fprintf(w, "User registered successfully with email: %s", email)
+		return nil
+	}
 }
 
 func (s *Service) Login(w http.ResponseWriter, r *http.Request) error {
@@ -174,7 +178,6 @@ func (s *Service) Login(w http.ResponseWriter, r *http.Request) error {
 		// Standard password flow
 		password := r.FormValue("password")
 		if err := s.validatePassword(user, password); err != nil {
-			http.Error(w, "Invalid password", http.StatusUnauthorized)
 			return fmt.Errorf("invalid password for email: %s", email)
 		}
 	}
@@ -188,7 +191,6 @@ func (s *Service) Login(w http.ResponseWriter, r *http.Request) error {
 	// Create session and CSRF tokens
 	sessionToken, csrfToken, err := s.GenerateSessionTokens(r)
 	if sessionToken == "" || csrfToken == "" || err != nil {
-		http.Error(w, "Error generating session tokens", http.StatusInternalServerError)
 		return fmt.Errorf("error generating session tokens")
 	}
 
@@ -347,4 +349,8 @@ func (s *Service) GenerateSessionTokens(r *http.Request) (string, string, error)
 	}
 
 	return sessionToken, csrfToken, nil
+}
+
+func (s *Service) GetCSRFTokenBySessionToken(ctx context.Context, sessionToken string) (string, error) {
+	return s.repo.GetCsrfTokenBySessionToken(ctx, sessionToken)
 }
