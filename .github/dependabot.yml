@@ -1,0 +1,100 @@
+version: 2
+updates:
+  # Go modules dependencies
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+      prefix-development: "deps-dev"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "go"
+    reviewers:
+      - "octocat"  # Replace with actual GitHub usernames
+    assignees:
+      - "octocat"  # Replace with actual GitHub usernames
+    groups:
+      # Group Go standard library and core dependencies
+      go-core:
+        patterns:
+          - "golang.org/x/*"
+          - "github.com/golang/*"
+      # Group database related dependencies
+      database:
+        patterns:
+          - "github.com/jackc/pgx/*"
+          - "github.com/golang-migrate/*"
+          - "*postgres*"
+          - "*sql*"
+      # Group testing dependencies
+      testing:
+        patterns:
+          - "github.com/stretchr/testify"
+          - "*test*"
+          - "*mock*"
+      # Group security dependencies
+      security:
+        patterns:
+          - "golang.org/x/crypto"
+          - "*crypto*"
+          - "*security*"
+
+  # Docker dependencies
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "09:00"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "docker"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "docker"
+    reviewers:
+      - "octocat"  # Replace with actual GitHub usernames
+
+  # GitHub Actions dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "ci/cd"
+    reviewers:
+      - "octocat"  # Replace with actual GitHub usernames
+    groups:
+      # Group Actions by organization
+      actions-official:
+        patterns:
+          - "actions/*"
+      setup-actions:
+        patterns:
+          - "actions/setup-*"
+      security-actions:
+        patterns:
+          - "github/codeql-action*"
+          - "*security*"
+          - "*vulnerability*"
+      build-actions:
+        patterns:
+          - "docker/*"
+          - "*build*"
+          - "*upload*"
+          - "*download*"
