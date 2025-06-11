@@ -133,7 +133,7 @@ curl -X POST http://localhost:8080/dashboard \
 ```bash
 curl -X POST http://localhost:8080/logout \
      -H "X-CSRF-Token: YOUR_CSRF_TOKEN" \
-     -b cookies.txt
+     -c cookies.txt
 ```
 
 Note, `curl` automatically uses POST method when sending data (-d flag). The -X POST flag is redundant in this case but doesn't affect functionality.
