@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gobackend/internal/db/sqlc"
+	"gobackend/internal/mailer"
 	"gobackend/internal/utils"
 
 	"github.com/google/uuid"
@@ -18,7 +19,8 @@ import (
 var ErrAuth = errors.New("unauthorized access")
 
 type Service struct {
-	repo AuthRepository
+	repo   AuthRepository
+	mailer mailer.Mailer
 }
 
 type OTPSession struct {
@@ -29,8 +31,25 @@ type OTPSession struct {
 }
 
 func NewService(repo AuthRepository) *Service {
+	// Initialize mailer service
+	mailerService, err := mailer.NewMailer()
+	if err != nil {
+		// Log error but don't fail - fallback to mock mailer
+		fmt.Printf("Warning: Failed to initialize mailer service: %v\n", err)
+		mailerService = mailer.NewMockMailer()
+	}
+
 	return &Service{
-		repo: repo,
+		repo:   repo,
+		mailer: mailerService,
+	}
+}
+
+// NewServiceWithMailer creates a new auth service with a specific mailer instance
+func NewServiceWithMailer(repo AuthRepository, mailerService mailer.Mailer) *Service {
+	return &Service{
+		repo:   repo,
+		mailer: mailerService,
 	}
 }
 
@@ -70,8 +89,8 @@ func (s *Service) RegisterWithPasswordInTenant(ctx context.Context, email, passw
 	return user, nil
 }
 
-// RegisterWithOTPInTenant registers a new user with OTP in a specific tenant
-func (s *Service) RegisterWithOTPInTenant(ctx context.Context, email string, tenantID uuid.UUID) (*sqlc.User, string, error) {
+// RegisterWithOTPInTenant registers a new user with OTP in a specific tenant and sends OTP email
+func (s *Service) RegisterWithOTPInTenant(ctx context.Context, email string, tenantID uuid.UUID, tenantName string) (*sqlc.User, string, error) {
 	// Check if user exists in this tenant
 	existingUser, err := s.repo.GetUserByEmailAndTenant(ctx, email, tenantID)
 	if err != nil {
@@ -100,6 +119,12 @@ func (s *Service) RegisterWithOTPInTenant(ctx context.Context, email string, ten
 		return nil, "", fmt.Errorf("error creating user: %w", err)
 	}
 
+	// Send OTP email
+	if err := s.mailer.SendOTP(email, "", otpCode, otpExpiry, tenantName); err != nil {
+		// Log error but don't fail the registration - user can still verify manually
+		fmt.Printf("Warning: Failed to send OTP email to %s: %v\n", email, err)
+	}
+
 	return user, otpCode, nil
 }
 
@@ -124,17 +149,18 @@ func (s *Service) LoginWithPasswordInTenant(ctx context.Context, email, password
 	return user, nil
 }
 
-// LoginWithOTPInTenant generates OTP for user login in a specific tenant
-func (s *Service) LoginWithOTPInTenant(ctx context.Context, email string, tenantID uuid.UUID) (*sqlc.User, string, error) {
+// LoginWithOTPInTenant generates OTP for an existing user in a specific tenant and sends OTP email
+func (s *Service) LoginWithOTPInTenant(ctx context.Context, email string, tenantID uuid.UUID, tenantName string) (*sqlc.User, string, error) {
+	// Get user by email in this tenant
 	user, err := s.repo.GetUserByEmailAndTenant(ctx, email, tenantID)
 	if err != nil {
-		return nil, "", fmt.Errorf("error retrieving user: %w", err)
+		return nil, "", fmt.Errorf("error getting user: %w", err)
 	}
 	if user == nil {
-		return nil, "", fmt.Errorf("user not found")
+		return nil, "", fmt.Errorf("user not found in this application")
 	}
 
-	// Generate new OTP for login
+	// Generate new OTP
 	otpCode := utils.GenerateOTP(6)
 	otpExpiry := time.Now().Add(5 * time.Minute)
 
@@ -146,6 +172,12 @@ func (s *Service) LoginWithOTPInTenant(ctx context.Context, email string, tenant
 	// Update user model
 	user.OtpCode = pgtype.Text{String: otpCode, Valid: true}
 	user.OtpExpiresAt = pgtype.Timestamptz{Time: otpExpiry, Valid: true}
+
+	// Send OTP email
+	if err := s.mailer.SendOTP(email, "", otpCode, otpExpiry, tenantName); err != nil {
+		// Log error but don't fail the login - user can still verify manually
+		fmt.Printf("Warning: Failed to send OTP email to %s: %v\n", email, err)
+	}
 
 	return user, otpCode, nil
 }

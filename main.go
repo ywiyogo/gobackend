@@ -7,6 +7,7 @@ import (
 	"gobackend/internal/auth"
 	"gobackend/internal/db/sqlc"
 	"gobackend/internal/health"
+	"gobackend/internal/mailer"
 	"gobackend/internal/notes"
 	"gobackend/internal/tenant"
 	"log"
@@ -51,7 +52,22 @@ func main() {
 
 	queries := sqlc.New(pool)
 
+	// Initialize mailer service
+	log.Default().Println("Initializing mailer service...")
+	mailerService, err := mailer.NewMailer()
+	if err != nil {
+		log.Printf("Warning: Failed to initialize mailer service: %v", err)
+		log.Printf("Falling back to mock mailer for development")
+		mailerService = mailer.NewMockMailer()
+	}
 
+	// Show mailer configuration
+	mailerConfig := mailerService.GetConfig()
+	log.Printf("Mailer service initialized: %s", mailerConfig["service"])
+	if mailerConfig["service"] != "mock" {
+		log.Printf("SMTP Host: %s:%v", mailerConfig["host"], mailerConfig["port"])
+		log.Printf("From Email: %s", mailerConfig["from_email"])
+	}
 
 	// Initialize repositories and services based on the repository pattern
 	log.Default().Println("Setting up authentication repository and service...")
@@ -59,7 +75,7 @@ func main() {
 		log.Fatal("Queries cannot be nil")
 	}
 	repo := auth.NewAuthRepository(queries)
-	authService := auth.NewService(repo)
+	authService := auth.NewServiceWithMailer(repo, mailerService)
 
 	// Initialize tenant service
 	tenantService := tenant.NewService(queries)

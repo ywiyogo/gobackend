@@ -76,7 +76,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 
 	if settings.OTPEnabled {
 		// OTP-based registration
-		user, otpCode, err = h.authService.RegisterWithOTPInTenant(r.Context(), req.Email, tenantObj.ID)
+		user, otpCode, err = h.authService.RegisterWithOTPInTenant(r.Context(), req.Email, tenantObj.ID, tenantObj.Name)
 		if err != nil {
 			log.Error().
 				Str("pkg", pkgName).
@@ -228,7 +228,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	if settings.OTPEnabled {
 		// OTP-based login
-		user, otpCode, err = h.authService.LoginWithOTPInTenant(r.Context(), req.Email, tenantObj.ID)
+		user, otpCode, err = h.authService.LoginWithOTPInTenant(r.Context(), req.Email, tenantObj.ID, tenantObj.Name)
 		if err != nil {
 			log.Error().
 				Str("pkg", pkgName).
