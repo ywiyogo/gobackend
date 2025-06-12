@@ -16,12 +16,48 @@ services:
       timeout: 5s
       retries: 5
 
+  migrate:
+    image: migrate/migrate
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    volumes:
+      - ./internal/db/migrations:/migrations
+    command: [
+      "-path", "/migrations",
+      "-database", "postgres://${DB_USER}:${DB_PASSWORD}@db:${DB_PORT}/${DB_NAME}?sslmode=disable",
+      "up"
+    ]
+
+  migrate-down:
+    image: migrate/migrate
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    volumes:
+      - ./internal/db/migrations:/migrations
+    command: [
+      "-path", "/migrations",
+      "-database", "postgres://${DB_USER}:${DB_PASSWORD}@db:${DB_PORT}/${DB_NAME}?sslmode=disable",
+      "down", "1"
+    ]
+    profiles:
+      - tools
+
   app:
     build: .  # assumes Dockerfile is in ./app directory
     restart: always
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     env_file:
       - .env
     volumes:

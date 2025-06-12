@@ -6,7 +6,9 @@ import (
 	"gobackend/internal/api"
 	"gobackend/internal/auth"
 	"gobackend/internal/db/sqlc"
+	"gobackend/internal/health"
 	"gobackend/internal/notes"
+	"gobackend/internal/tenant"
 	"log"
 	"net/http"
 	"os"
@@ -48,6 +50,16 @@ func main() {
 	defer pool.Close()
 
 	queries := sqlc.New(pool)
+
+	// Sync tenants from configuration file at startup
+	log.Default().Println("Syncing tenants from configuration...")
+
+	tenantSyncService := tenant.NewTenantSyncService(pool)
+	if err := tenantSyncService.SyncTenantsFromConfig("config/tenants.yaml"); err != nil {
+		log.Printf("Warning: Failed to sync tenants from config: %v", err)
+		log.Printf("Continuing without tenant sync - tenants may need to be created manually")
+	}
+
 	// Initialize repositories and services based on the repository pattern
 	log.Default().Println("Setting up authentication repository and service...")
 	if queries == nil {
@@ -55,22 +67,54 @@ func main() {
 	}
 	repo := auth.NewAuthRepository(queries)
 	authService := auth.NewService(repo)
-	userHandler := auth.NewHandler(authService)
+
+	// Initialize tenant service
+	tenantService := tenant.NewService(queries)
+
+	// Initialize health service
+	healthHandler := health.NewHandler(tenantService)
+
+	userHandler := auth.NewHandler(authService, tenantService)
 
 	//Improved Architecture Using Handler Registry instead of direct handlers
 	router := api.NewRouter(authService)
 	router.AppendHandler("GET /", Home)
 
+	// Health check routes (no middleware needed)
+	routesHealth := map[string]http.HandlerFunc{
+		"GET /health": healthHandler.Health,
+		"GET /ready":  healthHandler.Ready,
+		"GET /live":   healthHandler.Live,
+	}
+
+	router.AppendHandlerFromMapWithoutMiddleware(routesHealth)
+
+	// Create tenant middleware
+	tenantMiddleware := tenant.TenantMiddleware(tenantService)
+
+	// Auth routes with tenant middleware
 	routesAuth := map[string]http.HandlerFunc{
-		"POST /register":   userHandler.Register,
-		"POST /login":      userHandler.Login,
-		"POST /logout":     userHandler.Logout,
-		"POST /verify-otp": userHandler.VerifyOTP,
+		"POST /register": func(w http.ResponseWriter, r *http.Request) {
+			tenantMiddleware(http.HandlerFunc(userHandler.Register)).ServeHTTP(w, r)
+		},
+		"POST /login": func(w http.ResponseWriter, r *http.Request) {
+			tenantMiddleware(http.HandlerFunc(userHandler.Login)).ServeHTTP(w, r)
+		},
+		"POST /logout": func(w http.ResponseWriter, r *http.Request) {
+			tenantMiddleware(http.HandlerFunc(userHandler.Logout)).ServeHTTP(w, r)
+		},
+		"POST /verify-otp": func(w http.ResponseWriter, r *http.Request) {
+			tenantMiddleware(http.HandlerFunc(userHandler.VerifyOTP)).ServeHTTP(w, r)
+		},
 	}
 
 	router.AppendHandlerFromMap(routesAuth)
 
-	router.AppendProtectedHandler("POST /dashboard", api.Dashboard)
+	// Protected dashboard route with tenant middleware
+	dashboardWithTenant := func(w http.ResponseWriter, r *http.Request) {
+		tenantMiddleware(http.HandlerFunc(api.Dashboard)).ServeHTTP(w, r)
+	}
+	router.AppendProtectedHandler("POST /dashboard", dashboardWithTenant)
 
 	log.Default().Println("Setting up routes...")
 	noteService := notes.NewService()

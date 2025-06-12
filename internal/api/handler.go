@@ -50,6 +50,18 @@ func (r *Router) AppendHandlerFromMap(routes map[string]http.HandlerFunc) {
 	}
 }
 
+// AppendHandlerWithoutMiddleware adds handlers that bypass all middleware (for health checks)
+func (r *Router) AppendHandlerWithoutMiddleware(pathPattern string, handler http.HandlerFunc) {
+	r.mux.Handle(pathPattern, http.HandlerFunc(handler))
+}
+
+// AppendHandlerFromMapWithoutMiddleware adds multiple handlers that bypass all middleware
+func (r *Router) AppendHandlerFromMapWithoutMiddleware(routes map[string]http.HandlerFunc) {
+	for pathPattern, handler := range routes {
+		r.mux.Handle(pathPattern, http.HandlerFunc(handler))
+	}
+}
+
 func (r *Router) AppendProtectedHandlerFromMap(routes map[string]http.HandlerFunc) {
 	limiter := auth.NewRateLimiter(rateLimitRequests, rateLimitWindow)
 	rateLimitMiddleware := auth.RateLimitMiddleware(limiter)

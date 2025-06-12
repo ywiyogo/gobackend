@@ -1,0 +1,66 @@
+# Automatic HTTPS for production domains
+myapp.com, mysecond.app, api.yourdomain.com {
+    # Rate limiting
+    rate_limit {
+        zone static_rl {
+            key {remote_addr}
+            window 1m
+            events 60
+        }
+    }
+
+    # CORS headers will be set by the Go application based on tenant
+    # Proxy all requests to the Go backend
+    reverse_proxy app:8080 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_addr}
+        header_up X-Forwarded-For {remote_addr}
+        header_up X-Forwarded-Proto {scheme}
+        header_up Origin {header.Origin}
+    }
+
+    # Enable request logging
+    log {
+        output file /var/log/caddy/access.log
+        format json
+    }
+
+    # Security headers
+    header {
+        # Remove server header
+        -Server
+
+        # Security headers (CORS will be handled by Go app)
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+}
+
+# Development/localhost configuration
+localhost:80, localhost:443 {
+    # Development mode - no rate limiting
+    reverse_proxy app:8080 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_addr}
+        header_up X-Forwarded-For {remote_addr}
+        header_up X-Forwarded-Proto {scheme}
+        header_up Origin {header.Origin}
+    }
+
+    # Enable request logging for development
+    log {
+        output stdout
+        format console
+    }
+}
+
+# Global settings
+{
+    # Email for Let's Encrypt (replace with your email)
+    email your-email@example.com
+
+    # Use staging Let's Encrypt for testing
+    # acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}

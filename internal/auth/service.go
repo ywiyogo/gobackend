@@ -34,6 +34,255 @@ func NewService(repo AuthRepository) *Service {
 	}
 }
 
+// Multi-tenant authentication methods
+
+// RegisterWithPasswordInTenant registers a new user with password in a specific tenant
+func (s *Service) RegisterWithPasswordInTenant(ctx context.Context, email, password string, tenantID uuid.UUID) (*sqlc.User, error) {
+	// Check if user exists in this tenant
+	existingUser, err := s.repo.GetUserByEmailAndTenant(ctx, email, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("error checking existing user: %w", err)
+	}
+	if existingUser != nil {
+		return nil, fmt.Errorf("user already exists in this application")
+	}
+
+	// Hash password
+	hashedPassword, err := utils.HashPassword(password)
+	if err != nil {
+		return nil, fmt.Errorf("error hashing password: %w", err)
+	}
+
+	// Create user
+	user := &sqlc.User{
+		ID:           uuid.New(),
+		TenantID:     pgtype.UUID{Bytes: tenantID, Valid: true},
+		Email:        email,
+		PasswordHash: pgtype.Text{String: hashedPassword, Valid: true},
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+
+	if err := s.repo.CreateUserInTenant(ctx, user); err != nil {
+		return nil, fmt.Errorf("error creating user: %w", err)
+	}
+
+	return user, nil
+}
+
+// RegisterWithOTPInTenant registers a new user with OTP in a specific tenant
+func (s *Service) RegisterWithOTPInTenant(ctx context.Context, email string, tenantID uuid.UUID) (*sqlc.User, string, error) {
+	// Check if user exists in this tenant
+	existingUser, err := s.repo.GetUserByEmailAndTenant(ctx, email, tenantID)
+	if err != nil {
+		return nil, "", fmt.Errorf("error checking existing user: %w", err)
+	}
+	if existingUser != nil {
+		return nil, "", fmt.Errorf("user already exists in this application")
+	}
+
+	// Generate OTP
+	otpCode := utils.GenerateOTP(6)
+	otpExpiry := time.Now().Add(5 * time.Minute)
+
+	// Create user with OTP
+	user := &sqlc.User{
+		ID:           uuid.New(),
+		TenantID:     pgtype.UUID{Bytes: tenantID, Valid: true},
+		Email:        email,
+		OtpCode:      pgtype.Text{String: otpCode, Valid: true},
+		OtpExpiresAt: pgtype.Timestamptz{Time: otpExpiry, Valid: true},
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+
+	if err := s.repo.CreateUserInTenant(ctx, user); err != nil {
+		return nil, "", fmt.Errorf("error creating user: %w", err)
+	}
+
+	return user, otpCode, nil
+}
+
+// LoginWithPasswordInTenant authenticates a user with password in a specific tenant
+func (s *Service) LoginWithPasswordInTenant(ctx context.Context, email, password string, tenantID uuid.UUID) (*sqlc.User, error) {
+	user, err := s.repo.GetUserByEmailAndTenant(ctx, email, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving user: %w", err)
+	}
+	if user == nil {
+		return nil, fmt.Errorf("invalid credentials")
+	}
+
+	if !HasPassword(user) {
+		return nil, fmt.Errorf("password login not available for this user")
+	}
+
+	if !utils.CheckPasswordHash(password, user.PasswordHash.String) {
+		return nil, fmt.Errorf("invalid credentials")
+	}
+
+	return user, nil
+}
+
+// LoginWithOTPInTenant generates OTP for user login in a specific tenant
+func (s *Service) LoginWithOTPInTenant(ctx context.Context, email string, tenantID uuid.UUID) (*sqlc.User, string, error) {
+	user, err := s.repo.GetUserByEmailAndTenant(ctx, email, tenantID)
+	if err != nil {
+		return nil, "", fmt.Errorf("error retrieving user: %w", err)
+	}
+	if user == nil {
+		return nil, "", fmt.Errorf("user not found")
+	}
+
+	// Generate new OTP for login
+	otpCode := utils.GenerateOTP(6)
+	otpExpiry := time.Now().Add(5 * time.Minute)
+
+	// Set OTP for user
+	if err := s.repo.SetUserOTPInTenant(ctx, user.ID, uuid.UUID(user.TenantID.Bytes), otpCode, otpExpiry); err != nil {
+		return nil, "", fmt.Errorf("error setting OTP: %w", err)
+	}
+
+	// Update user model
+	user.OtpCode = pgtype.Text{String: otpCode, Valid: true}
+	user.OtpExpiresAt = pgtype.Timestamptz{Time: otpExpiry, Valid: true}
+
+	return user, otpCode, nil
+}
+
+// CreateSessionInTenant creates a new session for a user in a specific tenant
+func (s *Service) CreateSessionInTenant(ctx context.Context, userID, tenantID uuid.UUID, userAgent, ip string) (*sqlc.Session, error) {
+	sessionToken, err := utils.GenerateSecureToken(32)
+	if err != nil {
+		return nil, fmt.Errorf("error generating session token: %w", err)
+	}
+
+	csrfToken, err := utils.GenerateSecureToken(32)
+	if err != nil {
+		return nil, fmt.Errorf("error generating CSRF token: %w", err)
+	}
+
+	session := &sqlc.Session{
+		TenantID:     pgtype.UUID{Bytes: tenantID, Valid: true},
+		UserID:       userID,
+		SessionToken: sessionToken,
+		CsrfToken:    csrfToken,
+		UserAgent:    userAgent,
+		Ip:           ip,
+		ExpiresAt:    time.Now().Add(24 * time.Hour),
+		CreatedAt:    time.Now(),
+	}
+
+	if err := s.repo.CreateSessionInTenant(ctx, session); err != nil {
+		return nil, fmt.Errorf("error creating session: %w", err)
+	}
+
+	return session, nil
+}
+
+// ValidateSessionInTenant validates a session token within a specific tenant
+func (s *Service) ValidateSessionInTenant(ctx context.Context, sessionToken string, tenantID uuid.UUID) (*sqlc.Session, error) {
+	session, err := s.repo.GetSessionByTokenAndTenant(ctx, sessionToken, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("error getting session: %w", err)
+	}
+	if session == nil {
+		return nil, fmt.Errorf("invalid session")
+	}
+
+	if IsSessionExpired(session) {
+		// Clean up expired session
+		_ = s.repo.DeleteSessionByIDAndTenant(ctx, session.ID, tenantID)
+		return nil, fmt.Errorf("session expired")
+	}
+
+	return session, nil
+}
+
+// VerifyOTPInTenant verifies OTP and updates session in a specific tenant
+func (s *Service) VerifyOTPInTenant(ctx context.Context, sessionToken, otpCode string, tenantID uuid.UUID) (*sqlc.Session, error) {
+	// Get current session
+	session, err := s.ValidateSessionInTenant(ctx, sessionToken, tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Validate OTP
+	isValid, err := s.repo.ValidateOTPInTenant(ctx, session.UserID, tenantID, otpCode)
+	if err != nil {
+		return nil, fmt.Errorf("error validating OTP: %w", err)
+	}
+	if !isValid {
+		return nil, fmt.Errorf("invalid OTP code")
+	}
+
+	// Clear OTP after successful verification
+	_ = s.repo.ClearUserOTPInTenant(ctx, session.UserID, tenantID)
+
+	// Generate new session token for security
+	newSessionToken, err := utils.GenerateSecureToken(32)
+	if err != nil {
+		return nil, fmt.Errorf("error generating new session token: %w", err)
+	}
+
+	// Delete old session and create new one
+	_ = s.repo.DeleteSessionByIDAndTenant(ctx, session.ID, tenantID)
+
+	newSession := &sqlc.Session{
+		TenantID:     pgtype.UUID{Bytes: tenantID, Valid: true},
+		UserID:       session.UserID,
+		SessionToken: newSessionToken,
+		CsrfToken:    session.CsrfToken,
+		UserAgent:    session.UserAgent,
+		Ip:           session.Ip,
+		ExpiresAt:    time.Now().Add(24 * time.Hour),
+		CreatedAt:    time.Now(),
+	}
+
+	if err := s.repo.CreateSessionInTenant(ctx, newSession); err != nil {
+		return nil, fmt.Errorf("error creating new session: %w", err)
+	}
+
+	return newSession, nil
+}
+
+// LogoutInTenant logs out a user from a specific tenant
+func (s *Service) LogoutInTenant(ctx context.Context, sessionToken string, tenantID uuid.UUID, allDevices bool) error {
+	session, err := s.repo.GetSessionByTokenAndTenant(ctx, sessionToken, tenantID)
+	if err != nil {
+		return fmt.Errorf("error getting session: %w", err)
+	}
+	if session == nil {
+		return fmt.Errorf("session not found")
+	}
+
+	if allDevices {
+		// Delete all sessions for the user in this tenant
+		return s.repo.DeleteSessionByUserIDAndTenant(ctx, session.UserID, tenantID)
+	} else {
+		// Delete only current session
+		return s.repo.DeleteSessionByIDAndTenant(ctx, session.ID, tenantID)
+	}
+}
+
+// GetUserSessionsInTenant retrieves all sessions for a user in a specific tenant
+func (s *Service) GetUserSessionsInTenant(ctx context.Context, userID, tenantID uuid.UUID) ([]*sqlc.Session, error) {
+	return s.repo.GetSessionsByUserIDAndTenant(ctx, userID, tenantID)
+}
+
+// RequestOTPInTenant generates and sets OTP for a user in a specific tenant
+func (s *Service) RequestOTPInTenant(ctx context.Context, userID, tenantID uuid.UUID) (string, error) {
+	otpCode := utils.GenerateOTP(6)
+	expiresAt := time.Now().Add(5 * time.Minute)
+
+	err := s.repo.SetUserOTPInTenant(ctx, userID, tenantID, otpCode, expiresAt)
+	if err != nil {
+		return "", fmt.Errorf("failed to set OTP: %w", err)
+	}
+
+	return otpCode, nil
+}
+
 func (s *Service) VerifyOTP(ctx context.Context, sessionToken string, otpCode string) (string, error) {
 	session, err := s.repo.GetSessionRowByToken(ctx, sessionToken)
 	if err != nil {
@@ -74,10 +323,12 @@ func (s *Service) VerifyOTP(ctx context.Context, sessionToken string, otpCode st
 func (s *Service) Register(w http.ResponseWriter, r *http.Request) error {
 	email := r.FormValue("email")
 	if email == "" {
+		http.Error(w, "email is required", http.StatusBadRequest)
 		return fmt.Errorf("email is required")
 	}
 	fmt.Println("Registering user with email:", email)
 	if !utils.IsValidEmail(email) {
+		http.Error(w, "invalid email format", http.StatusBadRequest)
 		return fmt.Errorf("invalid email format: %s", email)
 	}
 
@@ -114,11 +365,13 @@ func (s *Service) Register(w http.ResponseWriter, r *http.Request) error {
 	} else {
 		// Password flow - check if user already exists
 		if userExists {
+			http.Error(w, "email already exists", http.StatusConflict)
 			return fmt.Errorf("email already exists: %s", email)
 		}
 
 		password := r.FormValue("password")
 		if password == "" || len(password) < 6 {
+			http.Error(w, "invalid password format", http.StatusBadRequest)
 			return fmt.Errorf("invalid password format")
 		}
 

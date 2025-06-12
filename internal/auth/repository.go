@@ -22,6 +22,7 @@ const pkgName = "auth"
 
 // AuthRepository defines the interface for user data operations
 type AuthRepository interface {
+	// Legacy methods (keep for backward compatibility)
 	CreateUserWithPassword(user *sqlc.User) error
 	GetUserByEmail(email string) (*sqlc.User, error)
 	CreateSession(ctx context.Context, userID uuid.UUID, sessionToken string, csrfToken string, userAgent string, ip string, expiresAt time.Time) (sqlc.Session, error)
@@ -40,6 +41,22 @@ type AuthRepository interface {
 	GetUserOTP(ctx context.Context, userID uuid.UUID) (string, time.Time, error)
 	ClearUserOTP(ctx context.Context, userID uuid.UUID) error
 	ValidateOTP(ctx context.Context, userID uuid.UUID, otp string) (bool, error)
+
+	// Multi-tenant methods
+	GetUserByEmailAndTenant(ctx context.Context, email string, tenantID uuid.UUID) (*sqlc.User, error)
+	GetUserByIDAndTenant(ctx context.Context, userID, tenantID uuid.UUID) (*sqlc.User, error)
+	CreateUserInTenant(ctx context.Context, user *sqlc.User) error
+	CreateSessionInTenant(ctx context.Context, session *sqlc.Session) error
+	GetSessionByTokenAndTenant(ctx context.Context, token string, tenantID uuid.UUID) (*sqlc.Session, error)
+	UserExistsByEmailAndTenant(ctx context.Context, email string, tenantID uuid.UUID) (bool, error)
+	SetUserOTPInTenant(ctx context.Context, userID, tenantID uuid.UUID, otpCode string, expiresAt time.Time) error
+	GetUserOTPInTenant(ctx context.Context, userID, tenantID uuid.UUID) (string, time.Time, error)
+	ClearUserOTPInTenant(ctx context.Context, userID, tenantID uuid.UUID) error
+	ValidateOTPInTenant(ctx context.Context, userID, tenantID uuid.UUID, otp string) (bool, error)
+	DeleteSessionByIDAndTenant(ctx context.Context, sessionID int64, tenantID uuid.UUID) error
+	DeleteSessionByUserIDAndTenant(ctx context.Context, userID, tenantID uuid.UUID) error
+	DeleteSessionsByDeviceAndTenant(ctx context.Context, tenantID, userID uuid.UUID, userAgent, ip string) error
+	GetSessionsByUserIDAndTenant(ctx context.Context, userID, tenantID uuid.UUID) ([]*sqlc.Session, error)
 }
 
 // UserRepo implements AuthRepository
@@ -94,6 +111,391 @@ func (r *UserRepo) ValidateOTP(ctx context.Context, userID uuid.UUID, otp string
 	}
 
 	return storedOTP == otp, nil
+}
+
+// Multi-tenant repository methods
+
+// GetUserByEmailAndTenant retrieves a user by email within a specific tenant
+func (r *UserRepo) GetUserByEmailAndTenant(ctx context.Context, email string, tenantID uuid.UUID) (*sqlc.User, error) {
+	userRow, err := r.queries.GetUserByEmailAndTenant(ctx, sqlc.GetUserByEmailAndTenantParams{
+		TenantID: pgtype.UUID{Bytes: tenantID, Valid: true},
+		Email:    email,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "GetUserByEmailAndTenant").
+			Str("email", email).
+			Str("tenant_id", tenantID.String()).
+			Err(err).
+			Msg("DB query failed")
+		return nil, fmt.Errorf("failed to get user by email and tenant: %w", err)
+	}
+
+	user := &sqlc.User{
+		ID:           userRow.ID,
+		TenantID:     userRow.TenantID,
+		Email:        userRow.Email,
+		PasswordHash: userRow.PasswordHash,
+		OtpCode:      userRow.OtpCode,
+		OtpExpiresAt: userRow.OtpExpiresAt,
+		CreatedAt:    userRow.CreatedAt,
+		UpdatedAt:    userRow.UpdatedAt,
+	}
+
+	return user, nil
+}
+
+// GetUserByIDAndTenant retrieves a user by ID within a specific tenant
+func (r *UserRepo) GetUserByIDAndTenant(ctx context.Context, userID, tenantID uuid.UUID) (*sqlc.User, error) {
+	userRow, err := r.queries.GetUserByIDAndTenant(ctx, sqlc.GetUserByIDAndTenantParams{
+		TenantID: pgtype.UUID{Bytes: tenantID, Valid: true},
+		ID:       userID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "GetUserByIDAndTenant").
+			Str("user_id", userID.String()).
+			Str("tenant_id", tenantID.String()).
+			Err(err).
+			Msg("DB query failed")
+		return nil, fmt.Errorf("failed to get user by ID and tenant: %w", err)
+	}
+
+	user := &sqlc.User{
+		ID:           userRow.ID,
+		TenantID:     userRow.TenantID,
+		Email:        userRow.Email,
+		PasswordHash: userRow.PasswordHash,
+		OtpCode:      userRow.OtpCode,
+		OtpExpiresAt: userRow.OtpExpiresAt,
+		CreatedAt:    userRow.CreatedAt,
+		UpdatedAt:    userRow.UpdatedAt,
+	}
+
+	return user, nil
+}
+
+// CreateUserInTenant creates a new user within a specific tenant
+func (r *UserRepo) CreateUserInTenant(ctx context.Context, user *sqlc.User) error {
+	if user.PasswordHash.Valid && user.PasswordHash.String != "" {
+		createdUser, err := r.queries.CreateUserWithPasswordInTenant(ctx, sqlc.CreateUserWithPasswordInTenantParams{
+			TenantID:     user.TenantID,
+			Email:        user.Email,
+			PasswordHash: user.PasswordHash,
+		})
+		if err != nil {
+			log.Error().
+				Str("pkg", pkgName).
+				Str("method", "CreateUserInTenant").
+				Str("email", user.Email).
+				Str("tenant_id", uuid.UUID(user.TenantID.Bytes).String()).
+				Err(err).
+				Msg("Failed to create user with password")
+			return fmt.Errorf("failed to create user with password in tenant: %w", err)
+		}
+		// Update the user object with the database-generated values
+		*user = createdUser
+	} else {
+		createdUser, err := r.queries.CreateUserWithOtpInTenant(ctx, sqlc.CreateUserWithOtpInTenantParams{
+			TenantID:     user.TenantID,
+			Email:        user.Email,
+			OtpCode:      user.OtpCode,
+			OtpExpiresAt: user.OtpExpiresAt,
+		})
+		if err != nil {
+			log.Error().
+				Str("pkg", pkgName).
+				Str("method", "CreateUserInTenant").
+				Str("email", user.Email).
+				Str("tenant_id", uuid.UUID(user.TenantID.Bytes).String()).
+				Err(err).
+				Msg("Failed to create user with OTP")
+			return fmt.Errorf("failed to create user with OTP in tenant: %w", err)
+		}
+		// Update the user object with the database-generated values
+		*user = createdUser
+	}
+
+	return nil
+}
+
+// CreateSessionInTenant creates a new session within a specific tenant
+func (r *UserRepo) CreateSessionInTenant(ctx context.Context, session *sqlc.Session) error {
+	_, err := r.queries.CreateSessionInTenant(ctx, sqlc.CreateSessionInTenantParams{
+		TenantID:     session.TenantID,
+		UserID:       session.UserID,
+		SessionToken: session.SessionToken,
+		CsrfToken:    session.CsrfToken,
+		UserAgent:    session.UserAgent,
+		Ip:           session.Ip,
+		ExpiresAt:    session.ExpiresAt,
+	})
+	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "CreateSessionInTenant").
+			Str("user_id", session.UserID.String()).
+			Str("tenant_id", uuid.UUID(session.TenantID.Bytes).String()).
+			Err(err).
+			Msg("Failed to create session")
+		return fmt.Errorf("failed to create session in tenant: %w", err)
+	}
+
+	return nil
+}
+
+// GetSessionByTokenAndTenant retrieves a session by token within a specific tenant
+func (r *UserRepo) GetSessionByTokenAndTenant(ctx context.Context, token string, tenantID uuid.UUID) (*sqlc.Session, error) {
+	sessionRow, err := r.queries.GetSessionByTokenAndTenant(ctx, sqlc.GetSessionByTokenAndTenantParams{
+		TenantID:     pgtype.UUID{Bytes: tenantID, Valid: true},
+		SessionToken: token,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "GetSessionByTokenAndTenant").
+			Str("tenant_id", tenantID.String()).
+			Err(err).
+			Msg("DB query failed")
+		return nil, fmt.Errorf("failed to get session by token and tenant: %w", err)
+	}
+
+	session := &sqlc.Session{
+		ID:           sessionRow.ID,
+		TenantID:     sessionRow.TenantID,
+		UserID:       sessionRow.UserID,
+		SessionToken: sessionRow.SessionToken,
+		CsrfToken:    sessionRow.CsrfToken,
+		UserAgent:    sessionRow.UserAgent,
+		Ip:           sessionRow.Ip,
+		ExpiresAt:    sessionRow.ExpiresAt,
+		CreatedAt:    sessionRow.CreatedAt,
+	}
+
+	return session, nil
+}
+
+// UserExistsByEmailAndTenant checks if a user exists by email within a specific tenant
+func (r *UserRepo) UserExistsByEmailAndTenant(ctx context.Context, email string, tenantID uuid.UUID) (bool, error) {
+	exists, err := r.queries.UserExistsByEmailAndTenant(ctx, sqlc.UserExistsByEmailAndTenantParams{
+		TenantID: pgtype.UUID{Bytes: tenantID, Valid: true},
+		Email:    email,
+	})
+	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "UserExistsByEmailAndTenant").
+			Str("email", email).
+			Str("tenant_id", tenantID.String()).
+			Err(err).
+			Msg("DB query failed")
+		return false, fmt.Errorf("failed to check user existence by email and tenant: %w", err)
+	}
+	return exists, nil
+}
+
+// SetUserOTPInTenant sets OTP for a user within a specific tenant
+func (r *UserRepo) SetUserOTPInTenant(ctx context.Context, userID, tenantID uuid.UUID, otpCode string, expiresAt time.Time) error {
+	err := r.queries.SetUserOTPInTenant(ctx, sqlc.SetUserOTPInTenantParams{
+		ID:           userID,
+		TenantID:     pgtype.UUID{Bytes: tenantID, Valid: true},
+		OtpCode:      pgtype.Text{String: otpCode, Valid: true},
+		OtpExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true},
+	})
+	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "SetUserOTPInTenant").
+			Str("user_id", userID.String()).
+			Str("tenant_id", tenantID.String()).
+			Err(err).
+			Msg("Failed to set OTP")
+		return fmt.Errorf("failed to set OTP in tenant: %w", err)
+	}
+	return nil
+}
+
+// GetUserOTPInTenant retrieves OTP for a user within a specific tenant
+func (r *UserRepo) GetUserOTPInTenant(ctx context.Context, userID, tenantID uuid.UUID) (string, time.Time, error) {
+	otpRow, err := r.queries.GetUserOTPInTenant(ctx, sqlc.GetUserOTPInTenantParams{
+		TenantID: pgtype.UUID{Bytes: tenantID, Valid: true},
+		ID:       userID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", time.Time{}, nil
+		}
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "GetUserOTPInTenant").
+			Str("user_id", userID.String()).
+			Str("tenant_id", tenantID.String()).
+			Err(err).
+			Msg("Failed to get OTP")
+		return "", time.Time{}, fmt.Errorf("failed to get OTP in tenant: %w", err)
+	}
+
+	return otpRow.OtpCode.String, otpRow.OtpExpiresAt.Time, nil
+}
+
+// ClearUserOTPInTenant clears OTP for a user within a specific tenant
+func (r *UserRepo) ClearUserOTPInTenant(ctx context.Context, userID, tenantID uuid.UUID) error {
+	err := r.queries.ClearUserOTPInTenant(ctx, sqlc.ClearUserOTPInTenantParams{
+		TenantID: pgtype.UUID{Bytes: tenantID, Valid: true},
+		ID:       userID,
+	})
+	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "ClearUserOTPInTenant").
+			Str("user_id", userID.String()).
+			Str("tenant_id", tenantID.String()).
+			Err(err).
+			Msg("Failed to clear OTP")
+		return fmt.Errorf("failed to clear OTP in tenant: %w", err)
+	}
+	return nil
+}
+
+// ValidateOTPInTenant validates OTP for a user within a specific tenant
+func (r *UserRepo) ValidateOTPInTenant(ctx context.Context, userID, tenantID uuid.UUID, otp string) (bool, error) {
+	otpCode, expiresAt, err := r.GetUserOTPInTenant(ctx, userID, tenantID)
+	if err != nil {
+		return false, err
+	}
+
+	if otpCode == "" || time.Now().After(expiresAt) {
+		return false, nil
+	}
+
+	return otpCode == otp, nil
+}
+
+// DeleteSessionByIDAndTenant deletes a session by ID within a specific tenant
+func (r *UserRepo) DeleteSessionByIDAndTenant(ctx context.Context, sessionID int64, tenantID uuid.UUID) error {
+	_, err := r.queries.DeleteSessionByIDAndTenant(ctx, sqlc.DeleteSessionByIDAndTenantParams{
+		TenantID: pgtype.UUID{Bytes: tenantID, Valid: true},
+		ID:       sessionID,
+	})
+	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "DeleteSessionByIDAndTenant").
+			Int64("session_id", sessionID).
+			Str("tenant_id", tenantID.String()).
+			Err(err).
+			Msg("Failed to delete session")
+		return fmt.Errorf("failed to delete session by ID and tenant: %w", err)
+	}
+	log.Info().
+		Str("pkg", pkgName).
+		Str("method", "DeleteSessionByIDAndTenant").
+		Int64("session_id", sessionID).
+		Str("tenant_id", tenantID.String()).
+		Msg("Session deleted successfully")
+
+	return nil
+}
+
+// DeleteSessionByUserIDAndTenant deletes all sessions for a user within a specific tenant
+func (r *UserRepo) DeleteSessionByUserIDAndTenant(ctx context.Context, userID, tenantID uuid.UUID) error {
+	_, err := r.queries.DeleteSessionByUserIDAndTenant(ctx, sqlc.DeleteSessionByUserIDAndTenantParams{
+		TenantID: pgtype.UUID{Bytes: tenantID, Valid: true},
+		UserID:   userID,
+	})
+	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "DeleteSessionByUserIDAndTenant").
+			Str("user_id", userID.String()).
+			Str("tenant_id", tenantID.String()).
+			Err(err).
+			Msg("Failed to delete user sessions")
+		return fmt.Errorf("failed to delete sessions by user ID and tenant: %w", err)
+	}
+	log.Info().
+		Str("pkg", pkgName).
+		Str("method", "DeleteSessionByUserIDAndTenant").
+		Str("user_id", userID.String()).
+		Str("tenant_id", tenantID.String()).
+		Msg("User sessions deleted successfully")
+
+	return nil
+}
+
+// DeleteSessionsByDeviceAndTenant deletes sessions for a specific device within a tenant
+func (r *UserRepo) DeleteSessionsByDeviceAndTenant(ctx context.Context, tenantID, userID uuid.UUID, userAgent, ip string) error {
+	_, err := r.queries.DeleteSessionsByDeviceAndTenant(ctx, sqlc.DeleteSessionsByDeviceAndTenantParams{
+		TenantID:  pgtype.UUID{Bytes: tenantID, Valid: true},
+		UserID:    userID,
+		UserAgent: userAgent,
+		Ip:        ip,
+	})
+	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "DeleteSessionsByDeviceAndTenant").
+			Str("user_id", userID.String()).
+			Str("tenant_id", tenantID.String()).
+			Err(err).
+			Msg("Failed to delete device sessions")
+		return fmt.Errorf("failed to delete sessions by device and tenant: %w", err)
+	}
+
+	log.Info().
+		Str("pkg", pkgName).
+		Str("method", "DeleteSessionsByDeviceAndTenant").
+		Str("user_id", userID.String()).
+		Str("tenant_id", tenantID.String()).
+		Msg("Device sessions deleted successfully")
+
+	return nil
+}
+
+// GetSessionsByUserIDAndTenant retrieves all sessions for a user within a specific tenant
+func (r *UserRepo) GetSessionsByUserIDAndTenant(ctx context.Context, userID, tenantID uuid.UUID) ([]*sqlc.Session, error) {
+	sessionRows, err := r.queries.GetSessionsByUserIDAndTenant(ctx, sqlc.GetSessionsByUserIDAndTenantParams{
+		TenantID: pgtype.UUID{Bytes: tenantID, Valid: true},
+		UserID:   userID,
+	})
+	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "GetSessionsByUserIDAndTenant").
+			Str("user_id", userID.String()).
+			Str("tenant_id", tenantID.String()).
+			Err(err).
+			Msg("DB query failed")
+		return nil, fmt.Errorf("failed to get sessions by user ID and tenant: %w", err)
+	}
+
+	sessions := make([]*sqlc.Session, len(sessionRows))
+	for i, row := range sessionRows {
+		sessions[i] = &sqlc.Session{
+			ID:           row.ID,
+			TenantID:     row.TenantID,
+			UserID:       row.UserID,
+			SessionToken: row.SessionToken,
+			CsrfToken:    row.CsrfToken,
+			UserAgent:    row.UserAgent,
+			Ip:           row.Ip,
+			ExpiresAt:    row.ExpiresAt,
+			CreatedAt:    row.CreatedAt,
+		}
+	}
+
+	return sessions, nil
 }
 
 // GetUserByEmail retrieves a user by their email

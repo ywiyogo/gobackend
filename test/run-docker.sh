@@ -54,6 +54,7 @@ show_usage() {
     echo "  $0                                    # Run integration tests"
     echo "  $0 unit                              # Run unit tests"
     echo "  $0 integration-coverage              # Run integration tests with coverage"
+    echo "  $0 integration TestAuthenticationWorkflowWithPassword  # Run specific test"
     echo "  $0 -p TestAuthenticationWorkflow*    # Run specific test pattern"
     echo "  $0 -o                                # Run with OTP enabled"
     echo "  $0 -s                                # Setup environment only"
@@ -160,6 +161,11 @@ main() {
             unit|integration|integration-short|integration-coverage|all)
                 test_type="$1"
                 shift
+                # Check if next argument is a test pattern (not starting with -)
+                if [[ $# -gt 0 && ! "$1" =~ ^- ]]; then
+                    test_pattern="$1"
+                    shift
+                fi
                 ;;
             *)
                 print_error "Unknown option: $1"

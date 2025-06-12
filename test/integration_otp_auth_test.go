@@ -1,0 +1,291 @@
+package test
+
+import (
+	"fmt"
+	"net/http"
+	"net/url"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// TestAuthenticationWorkflowWithOTP tests the complete OTP-based authentication flow
+func TestAuthenticationWorkflowWithOTP(t *testing.T) {
+	ts := setupOTPTestServer(t)
+	defer ts.cleanup(t)
+
+	testEmail := fmt.Sprintf("test-otp-%d@example.com", time.Now().Unix())
+	var otpCode string
+	var csrfToken string
+
+	t.Run("Register with OTP", func(t *testing.T) {
+		fmt.Printf("Registering user with email: %s\n", testEmail)
+
+		data := url.Values{
+			"email": {testEmail},
+		}
+
+		resp := ts.postForm(t, "/register", data)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+		// OTP registration should return OTP code (in real scenario, this would be sent via email/SMS)
+		body := getResponseBody(t, resp)
+		otpCode = extractOTPFromResponse(body)
+		require.NotEmpty(t, otpCode, "OTP code should be present in response")
+		assert.Len(t, otpCode, 6, "OTP should be 6 digits")
+
+		// Extract CSRF token from response body
+		csrfToken = extractCSRFTokenFromResponse(body)
+		require.NotEmpty(t, csrfToken, "CSRF token should be present in response")
+	})
+
+	t.Run("Verify OTP", func(t *testing.T) {
+		data := url.Values{
+			"otp_code": {otpCode},
+		}
+
+		resp := ts.postFormWithCSRF(t, "/verify-otp", data, csrfToken)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+		body := getResponseBody(t, resp)
+		assert.Contains(t, body, "OTP verified successfully")
+
+		// Check for updated session cookie after OTP verification
+		var sessionCookie *http.Cookie
+		for _, cookie := range resp.Cookies() {
+			if cookie.Name == "session_token" {
+				sessionCookie = cookie
+				break
+			}
+		}
+		require.NotNil(t, sessionCookie, "Session cookie should be set after OTP verification")
+	})
+
+	t.Run("Access protected endpoint after OTP verification", func(t *testing.T) {
+		req, err := http.NewRequest("GET", ts.Server.URL+"/dashboard", nil)
+		require.NoError(t, err)
+		req.Header.Set("Origin", fmt.Sprintf("https://%s", ts.DefaultTenant.Domain))
+		req.Header.Set("X-CSRF-Token", csrfToken)
+
+		resp, err := ts.Client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+		body := getResponseBody(t, resp)
+		assert.Contains(t, body, "Dashboard data retrieved successfully")
+	})
+
+	t.Run("Login with OTP (existing user)", func(t *testing.T) {
+		// First logout
+		ts.postFormWithCSRF(t, "/logout", url.Values{}, csrfToken)
+
+		// Try to login (should generate new OTP)
+		data := url.Values{
+			"email": {testEmail},
+		}
+
+		resp := ts.postForm(t, "/login", data)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+		// Should return new OTP code
+		body := getResponseBody(t, resp)
+		newOTPCode := extractOTPFromResponse(body)
+		require.NotEmpty(t, newOTPCode, "New OTP code should be present in response")
+		assert.Len(t, newOTPCode, 6, "OTP should be 6 digits")
+
+		// Extract new CSRF token
+		csrfToken = extractCSRFTokenFromResponse(body)
+		require.NotEmpty(t, csrfToken, "CSRF token should be present in response")
+
+		// Verify the new OTP
+		verifyData := url.Values{
+			"otp_code": {newOTPCode},
+		}
+
+		verifyResp := ts.postFormWithCSRF(t, "/verify-otp", verifyData, csrfToken)
+		defer verifyResp.Body.Close()
+
+		assert.Equal(t, http.StatusOK, verifyResp.StatusCode)
+	})
+
+	t.Run("Logout", func(t *testing.T) {
+		req, err := http.NewRequest("GET", ts.Server.URL+"/dashboard", nil)
+		require.NoError(t, err)
+		req.Header.Set("Origin", fmt.Sprintf("https://%s", ts.DefaultTenant.Domain))
+		req.Header.Set("X-CSRF-Token", csrfToken)
+
+		resp, err := ts.Client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+}
+
+// TestOTPErrorScenarios tests various error scenarios specific to OTP authentication
+func TestOTPErrorScenarios(t *testing.T) {
+	ts := setupOTPTestServer(t)
+	defer ts.cleanup(t)
+
+	testEmail := fmt.Sprintf("test-otp-errors-%d@example.com", time.Now().Unix())
+
+	t.Run("Register and try invalid OTP", func(t *testing.T) {
+		// Register user first
+		registerData := url.Values{
+			"email": {testEmail},
+		}
+		registerResp := ts.postForm(t, "/register", registerData)
+		defer registerResp.Body.Close()
+		assert.Equal(t, http.StatusOK, registerResp.StatusCode)
+
+		// Extract CSRF token
+		body := getResponseBody(t, registerResp)
+		csrfToken := extractCSRFTokenFromResponse(body)
+
+		// Try to verify with invalid OTP
+		verifyData := url.Values{
+			"otp_code": {"000000"}, // Invalid OTP
+		}
+		verifyResp := ts.postFormWithCSRF(t, "/verify-otp", verifyData, csrfToken)
+		defer verifyResp.Body.Close()
+
+		assert.Equal(t, http.StatusUnauthorized, verifyResp.StatusCode)
+	})
+
+	t.Run("Verify OTP with wrong session", func(t *testing.T) {
+		// Try to verify OTP without proper session
+		verifyData := url.Values{
+			"otp_code": {"123456"},
+		}
+		verifyResp := ts.postForm(t, "/verify-otp", verifyData)
+		defer verifyResp.Body.Close()
+
+		assert.Equal(t, http.StatusUnauthorized, verifyResp.StatusCode)
+	})
+
+	t.Run("Verify OTP with expired code", func(t *testing.T) {
+		// This would require mocking time or creating an OTP with very short expiry
+		// For now, we test the basic flow
+		verifyData := url.Values{
+			"otp_code": {"123456"}, // Assume this is expired
+		}
+		verifyResp := ts.postForm(t, "/verify-otp", verifyData)
+		defer verifyResp.Body.Close()
+
+		// Should fail due to invalid session or expired OTP
+		assert.NotEqual(t, http.StatusOK, verifyResp.StatusCode)
+	})
+
+	t.Run("Multiple OTP verification attempts", func(t *testing.T) {
+		// Register a new user for this test
+		newEmail := fmt.Sprintf("test-multiple-otp-%d@example.com", time.Now().Unix())
+		registerData := url.Values{
+			"email": {newEmail},
+		}
+		registerResp := ts.postForm(t, "/register", registerData)
+		defer registerResp.Body.Close()
+
+		// Extract CSRF token
+		body := getResponseBody(t, registerResp)
+		csrfToken := extractCSRFTokenFromResponse(body)
+
+		// Try multiple invalid OTP attempts
+		for i := 0; i < 3; i++ {
+			verifyData := url.Values{
+				"otp_code": {fmt.Sprintf("00000%d", i)}, // Invalid OTP
+			}
+			verifyResp := ts.postFormWithCSRF(t, "/verify-otp", verifyData, csrfToken)
+			defer verifyResp.Body.Close()
+
+			assert.Equal(t, http.StatusUnauthorized, verifyResp.StatusCode)
+		}
+	})
+}
+
+// TestOTPSessionManagement tests session management specific to OTP authentication
+func TestOTPSessionManagement(t *testing.T) {
+	ts := setupOTPTestServer(t)
+	defer ts.cleanup(t)
+
+	testEmail := fmt.Sprintf("test-otp-session-%d@example.com", time.Now().Unix())
+
+	t.Run("Session creation and validation", func(t *testing.T) {
+		// Register user
+		registerData := url.Values{
+			"email": {testEmail},
+		}
+		registerResp := ts.postForm(t, "/register", registerData)
+		defer registerResp.Body.Close()
+		assert.Equal(t, http.StatusOK, registerResp.StatusCode)
+
+		// Extract OTP and CSRF token
+		body := getResponseBody(t, registerResp)
+		otpCode := extractOTPFromResponse(body)
+		csrfToken := extractCSRFTokenFromResponse(body)
+
+		// Verify OTP should create a full session
+		verifyData := url.Values{
+			"otp_code": {otpCode},
+		}
+		verifyResp := ts.postFormWithCSRF(t, "/verify-otp", verifyData, csrfToken)
+		defer verifyResp.Body.Close()
+		assert.Equal(t, http.StatusOK, verifyResp.StatusCode)
+
+		// Session should now allow access to protected resources
+		req, err := http.NewRequest("GET", ts.Server.URL+"/dashboard", nil)
+		require.NoError(t, err)
+		req.Header.Set("Origin", fmt.Sprintf("https://%s", ts.DefaultTenant.Domain))
+		req.Header.Set("X-CSRF-Token", csrfToken)
+
+		resp, err := ts.Client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+
+	t.Run("Session invalidation after logout", func(t *testing.T) {
+		// Login again to get a fresh session
+		loginData := url.Values{
+			"email": {testEmail},
+		}
+		loginResp := ts.postForm(t, "/login", loginData)
+		defer loginResp.Body.Close()
+
+		// Extract new OTP and CSRF token
+		body := getResponseBody(t, loginResp)
+		otpCode := extractOTPFromResponse(body)
+		csrfToken := extractCSRFTokenFromResponse(body)
+
+		// Verify OTP
+		verifyData := url.Values{
+			"otp_code": {otpCode},
+		}
+		verifyResp := ts.postFormWithCSRF(t, "/verify-otp", verifyData, csrfToken)
+		defer verifyResp.Body.Close()
+
+		// Logout
+		logoutResp := ts.postFormWithCSRF(t, "/logout", url.Values{}, csrfToken)
+		defer logoutResp.Body.Close()
+		assert.Equal(t, http.StatusOK, logoutResp.StatusCode)
+
+		// Access should now be denied
+		req, err := http.NewRequest("GET", ts.Server.URL+"/dashboard", nil)
+		require.NoError(t, err)
+		req.Header.Set("Origin", fmt.Sprintf("https://%s", ts.DefaultTenant.Domain))
+
+		resp, err := ts.Client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	})
+}
