@@ -1,3 +1,6 @@
+-- Enable pgcrypto extension for cryptographic functions
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- Create tenants table
 CREATE TABLE tenants (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -51,3 +54,31 @@ CREATE TRIGGER trigger_validate_session_tenant_consistency
     BEFORE INSERT OR UPDATE ON sessions
     FOR EACH ROW
     EXECUTE FUNCTION validate_session_tenant_consistency();
+
+-- Insert initial tenants with generated API keys and settings
+INSERT INTO tenants (id, name, domain, subdomain, api_key, settings, is_active, created_at, updated_at)
+VALUES
+    (
+        gen_random_uuid(),
+        'Test Project',
+        'localhost:3000',
+        NULL,
+        encode(gen_random_bytes(32), 'hex'),
+        '{"otp_enabled": true, "session_timeout_minutes": 480, "rate_limit_per_minute": 60, "csrf_enabled": true, "secure_cookies": false, "admin_email": "admin@localhost"}',
+        true,
+        NOW(),
+        NOW()
+    )
+ON CONFLICT (domain) DO NOTHING;
+
+-- Log the API keys for initial setup (these will be visible in migration logs)
+-- In production, these should be retrieved via admin API
+DO $$
+DECLARE
+    tenant_record RECORD;
+BEGIN
+    FOR tenant_record IN SELECT name, domain, api_key FROM tenants WHERE domain IN ('localhost:3000')
+    LOOP
+        RAISE NOTICE 'Tenant: % (%) - API Key: %', tenant_record.name, tenant_record.domain, tenant_record.api_key;
+    END LOOP;
+END $$;

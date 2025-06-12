@@ -1,6 +1,8 @@
 package tenant
 
 import (
+	"encoding/json"
+
 	"gobackend/internal/db/sqlc"
 )
 
@@ -26,54 +28,82 @@ func DefaultTenantSettings() *TenantSettings {
 	}
 }
 
-// CreateTenantRequest represents the request to create a new tenant
+// Helper functions for working with SQLC Tenant model
+
+// GetTenantSettings parses tenant settings from JSON with defaults
+func GetTenantSettings(tenant *sqlc.Tenant) (*TenantSettings, error) {
+	settings := DefaultTenantSettings()
+
+	if len(tenant.Settings) > 0 {
+		settingsStr := string(tenant.Settings)
+		if settingsStr != "" && settingsStr != "{}" {
+			if err := json.Unmarshal(tenant.Settings, settings); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	// Ensure defaults are set for any missing values
+	if settings.SessionTimeoutMinutes == 0 {
+		settings.SessionTimeoutMinutes = 1440 // 24 hours
+	}
+	if settings.RateLimitPerMinute == 0 {
+		settings.RateLimitPerMinute = 60
+	}
+	if settings.AllowedOrigins == nil {
+		settings.AllowedOrigins = []string{}
+	}
+	if settings.CustomBranding == nil {
+		settings.CustomBranding = make(map[string]string)
+	}
+
+	return settings, nil
+}
+
+// Request/Response types for tenant admin API
+
+// CreateTenantRequest represents the request body for creating a tenant
 type CreateTenantRequest struct {
-	Name      string          `json:"name" validate:"required,min=1,max=255"`
-	Domain    string          `json:"domain" validate:"required,fqdn"`
-	Subdomain *string         `json:"subdomain,omitempty" validate:"omitempty,min=1,max=100"`
-	Settings  *TenantSettings `json:"settings,omitempty"`
+	Name       string           `json:"name" validate:"required"`
+	Domain     string           `json:"domain" validate:"required"`
+	Subdomain  *string          `json:"subdomain,omitempty"`
+	Settings   *TenantSettings  `json:"settings,omitempty"`
+	AdminEmail string           `json:"admin_email" validate:"required,email"`
+	IsActive   bool             `json:"is_active"`
 }
 
-// UpdateTenantRequest represents the request to update tenant settings
+// UpdateTenantRequest represents the request body for updating a tenant
 type UpdateTenantRequest struct {
-	Name     *string         `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
-	Settings *TenantSettings `json:"settings,omitempty"`
-	IsActive *bool           `json:"is_active,omitempty"`
+	Name       *string          `json:"name,omitempty"`
+	Domain     *string          `json:"domain,omitempty"`
+	Subdomain  *string          `json:"subdomain,omitempty"`
+	Settings   *TenantSettings  `json:"settings,omitempty"`
+	AdminEmail *string          `json:"admin_email,omitempty"`
+	IsActive   *bool            `json:"is_active,omitempty"`
 }
 
-// TenantResponse represents the response format for tenant data
+// TenantResponse represents the response body for tenant operations
 type TenantResponse struct {
-	ID        string          `json:"id"`
-	Name      string          `json:"name"`
-	Domain    string          `json:"domain"`
-	Subdomain *string         `json:"subdomain,omitempty"`
-	Settings  *TenantSettings `json:"settings,omitempty"`
-	IsActive  bool            `json:"is_active"`
-	CreatedAt string          `json:"created_at"`
-	UpdatedAt string          `json:"updated_at"`
+	ID         string                 `json:"id"`
+	Name       string                 `json:"name"`
+	Domain     string                 `json:"domain"`
+	Subdomain  *string                `json:"subdomain,omitempty"`
+	APIKey     string                 `json:"api_key"`
+	Settings   map[string]interface{} `json:"settings"`
+	AdminEmail string                 `json:"admin_email"`
+	IsActive   bool                   `json:"is_active"`
+	CreatedAt  string                 `json:"created_at"`
+	UpdatedAt  string                 `json:"updated_at"`
 }
 
-// ToResponse converts a SQLC Tenant model to a TenantResponse
-func ToResponse(tenant *sqlc.Tenant, settings *TenantSettings) *TenantResponse {
-	response := &TenantResponse{
-		ID:       tenant.ID.String(),
-		Name:     tenant.Name,
-		Domain:   tenant.Domain,
-		Settings: settings,
-		IsActive: tenant.IsActive.Valid && tenant.IsActive.Bool,
-	}
+// TenantsListResponse represents the response for listing tenants
+type TenantsListResponse struct {
+	Tenants []TenantResponse `json:"tenants"`
+	Total   int              `json:"total"`
+}
 
-	if tenant.Subdomain.Valid {
-		response.Subdomain = &tenant.Subdomain.String
-	}
-
-	if tenant.CreatedAt.Valid {
-		response.CreatedAt = tenant.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00")
-	}
-
-	if tenant.UpdatedAt.Valid {
-		response.UpdatedAt = tenant.UpdatedAt.Time.Format("2006-01-02T15:04:05Z07:00")
-	}
-
-	return response
+// ErrorResponse represents an error response
+type ErrorResponse struct {
+	Error   string `json:"error"`
+	Message string `json:"message,omitempty"`
 }

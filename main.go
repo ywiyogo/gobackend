@@ -51,14 +51,7 @@ func main() {
 
 	queries := sqlc.New(pool)
 
-	// Sync tenants from configuration file at startup
-	log.Default().Println("Syncing tenants from configuration...")
 
-	tenantSyncService := tenant.NewTenantSyncService(pool)
-	if err := tenantSyncService.SyncTenantsFromConfig("config/tenants.yaml"); err != nil {
-		log.Printf("Warning: Failed to sync tenants from config: %v", err)
-		log.Printf("Continuing without tenant sync - tenants may need to be created manually")
-	}
 
 	// Initialize repositories and services based on the repository pattern
 	log.Default().Println("Setting up authentication repository and service...")
@@ -75,6 +68,9 @@ func main() {
 	healthHandler := health.NewHandler(tenantService)
 
 	userHandler := auth.NewHandler(authService, tenantService)
+
+	// Initialize tenant admin handler
+	tenantAdminHandler := tenant.NewAdminHandler(tenantService)
 
 	//Improved Architecture Using Handler Registry instead of direct handlers
 	router := api.NewRouter(authService)
@@ -115,6 +111,16 @@ func main() {
 		tenantMiddleware(http.HandlerFunc(api.Dashboard)).ServeHTTP(w, r)
 	}
 	router.AppendProtectedHandler("POST /dashboard", dashboardWithTenant)
+
+	// Admin routes for tenant management (no tenant middleware needed)
+	routesAdmin := map[string]http.HandlerFunc{
+		"GET /admin/tenants":      tenantAdminHandler.GetTenants,
+		"POST /admin/tenants":     tenantAdminHandler.CreateTenant,
+		"GET /admin/tenants/{id}": tenantAdminHandler.GetTenant,
+		"PUT /admin/tenants/{id}": tenantAdminHandler.UpdateTenant,
+		"DELETE /admin/tenants/{id}": tenantAdminHandler.DeleteTenant,
+	}
+	router.AppendHandlerFromMapWithoutMiddleware(routesAdmin)
 
 	log.Default().Println("Setting up routes...")
 	noteService := notes.NewService()

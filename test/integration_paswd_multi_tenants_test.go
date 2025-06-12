@@ -1,6 +1,7 @@
 package test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -33,7 +34,7 @@ func TestPasswordTenantSettings(t *testing.T) {
 		Settings: passwordSettings,
 	}
 
-	passwordTenant, err := ts.TenantService.CreateTenant(passwordTenantReq)
+	passwordTenant, err := ts.TenantService.CreateTenantAdmin(context.Background(), passwordTenantReq)
 	require.NoError(t, err)
 
 	email := "settings@example.com"

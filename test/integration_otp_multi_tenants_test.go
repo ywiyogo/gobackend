@@ -1,6 +1,7 @@
 package test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -33,7 +34,7 @@ func TestTenantSettings(t *testing.T) {
 		Settings: otpSettings,
 	}
 
-	otpTenant, err := ts.TenantService.CreateTenant(otpTenantReq)
+	otpTenant, err := ts.TenantService.CreateTenantAdmin(context.Background(), otpTenantReq)
 	require.NoError(t, err)
 
 
@@ -190,7 +191,7 @@ func TestMultiTenantOTPWorkflow(t *testing.T) {
 		Settings: customSettings,
 	}
 
-	customTenant, err := ts.TenantService.CreateTenant(customTenantReq)
+	customTenant, err := ts.TenantService.CreateTenantAdmin(context.Background(), customTenantReq)
 	require.NoError(t, err)
 
 	email := "workflow@example.com"

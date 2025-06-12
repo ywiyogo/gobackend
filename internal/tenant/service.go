@@ -140,38 +140,7 @@ func (s *Service) CheckDatabaseConnectivity() error {
 
 // GetTenantSettings parses and returns tenant settings with defaults
 func (s *Service) GetTenantSettings(tenant *sqlc.Tenant) (*TenantSettings, error) {
-	settings := DefaultTenantSettings()
-
-	if len(tenant.Settings) > 0 {
-		settingsStr := string(tenant.Settings)
-		if settingsStr != "" && settingsStr != "{}" {
-			if err := json.Unmarshal(tenant.Settings, settings); err != nil {
-				log.Error().
-					Str("pkg", pkgName).
-					Str("method", "GetTenantSettings").
-					Str("tenant_id", tenant.ID.String()).
-					Err(err).
-					Msg("Failed to unmarshal tenant settings")
-				return nil, fmt.Errorf("failed to parse tenant settings: %w", err)
-			}
-		}
-	}
-
-	// Ensure defaults are set for any missing values
-	if settings.SessionTimeoutMinutes == 0 {
-		settings.SessionTimeoutMinutes = 1440 // 24 hours
-	}
-	if settings.RateLimitPerMinute == 0 {
-		settings.RateLimitPerMinute = 60
-	}
-	if settings.AllowedOrigins == nil {
-		settings.AllowedOrigins = []string{}
-	}
-	if settings.CustomBranding == nil {
-		settings.CustomBranding = make(map[string]string)
-	}
-
-	return settings, nil
+	return GetTenantSettings(tenant)
 }
 
 // CreateTenant creates a new tenant with the provided settings
@@ -188,12 +157,13 @@ func (s *Service) CreateTenant(req *CreateTenantRequest) (*sqlc.Tenant, error) {
 	}
 
 	// Prepare settings
-	settings := req.Settings
-	if settings == nil {
-		settings = DefaultTenantSettings()
+	var settingsJSON []byte
+	if req.Settings != nil {
+		settingsJSON, err = json.Marshal(req.Settings)
+	} else {
+		defaultSettings := DefaultTenantSettings()
+		settingsJSON, err = json.Marshal(defaultSettings)
 	}
-
-	settingsJSON, err := json.Marshal(settings)
 	if err != nil {
 		log.Error().
 			Str("pkg", pkgName).
@@ -238,6 +208,85 @@ func (s *Service) CreateTenant(req *CreateTenantRequest) (*sqlc.Tenant, error) {
 		Msg("Tenant created successfully")
 
 	return &tenantData, nil
+}
+
+// CreateTenantAdmin creates a new tenant (admin API version)
+func (s *Service) CreateTenantAdmin(ctx context.Context, req *CreateTenantRequest) (*sqlc.Tenant, error) {
+	// Generate secure API key
+	apiKey, err := utils.GenerateSecureToken(32)
+	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "CreateTenantAdmin").
+			Err(err).
+			Msg("Failed to generate API key")
+		return nil, fmt.Errorf("failed to generate API key: %w", err)
+	}
+
+	// Prepare settings with admin email
+	var settings *TenantSettings
+	if req.Settings != nil {
+		settings = req.Settings
+	} else {
+		settings = DefaultTenantSettings()
+	}
+
+	// Convert settings to map for JSON storage, including admin email
+	settingsMap := map[string]interface{}{
+		"otp_enabled":                settings.OTPEnabled,
+		"session_timeout_minutes":    settings.SessionTimeoutMinutes,
+		"allowed_origins":            settings.AllowedOrigins,
+		"rate_limit_per_minute":      settings.RateLimitPerMinute,
+		"require_email_verification": settings.RequireEmailVerification,
+		"custom_branding":            settings.CustomBranding,
+		"admin_email":                req.AdminEmail,
+	}
+
+	settingsJSON, err := json.Marshal(settingsMap)
+	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "CreateTenantAdmin").
+			Err(err).
+			Msg("Failed to marshal tenant settings")
+		return nil, fmt.Errorf("failed to marshal settings: %w", err)
+	}
+
+	// Prepare subdomain
+	var subdomain pgtype.Text
+	if req.Subdomain != nil {
+		subdomain = pgtype.Text{String: *req.Subdomain, Valid: true}
+	}
+
+	// Create tenant in database
+	sqlcTenant, err := s.repo.CreateTenant(ctx, sqlc.CreateTenantParams{
+		Name:      req.Name,
+		Domain:    req.Domain,
+		Subdomain: subdomain,
+		ApiKey:    apiKey,
+		Settings:  settingsJSON,
+	})
+	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "CreateTenantAdmin").
+			Str("domain", req.Domain).
+			Err(err).
+			Msg("Failed to create tenant in database")
+		return nil, fmt.Errorf("failed to create tenant: %w", err)
+	}
+
+	// Clear cache to ensure fresh data on next lookup
+	s.clearCache()
+
+	log.Info().
+		Str("pkg", pkgName).
+		Str("method", "CreateTenantAdmin").
+		Str("tenant_id", sqlcTenant.ID.String()).
+		Str("domain", sqlcTenant.Domain).
+		Msg("Tenant created successfully")
+
+	return &sqlcTenant, nil
 }
 
 // UpdateTenantSettings updates the settings for a tenant
@@ -325,6 +374,181 @@ func (s *Service) ClearCacheForDomain(domain string) {
 		Str("method", "ClearCacheForDomain").
 		Str("domain", domain).
 		Msg("Tenant cache cleared for domain")
+}
+
+// GetAllTenants retrieves all tenants from the database
+func (s *Service) GetAllTenants(ctx context.Context) ([]*sqlc.Tenant, error) {
+	sqlcTenants, err := s.repo.GetAllTenants(ctx)
+	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "GetAllTenants").
+			Err(err).
+			Msg("Failed to get all tenants")
+		return nil, fmt.Errorf("failed to get all tenants: %w", err)
+	}
+
+	var tenants []*sqlc.Tenant
+	for i := range sqlcTenants {
+		tenants = append(tenants, &sqlcTenants[i])
+	}
+
+	return tenants, nil
+}
+
+// GetTenantByID retrieves a tenant by ID
+func (s *Service) GetTenantByID(ctx context.Context, tenantID uuid.UUID) (*sqlc.Tenant, error) {
+	sqlcTenant, err := s.repo.GetTenantByID(ctx, tenantID)
+	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "GetTenantByID").
+			Str("tenant_id", tenantID.String()).
+			Err(err).
+			Msg("Failed to get tenant by ID")
+		return nil, fmt.Errorf("failed to get tenant by ID: %w", err)
+	}
+
+	return &sqlcTenant, nil
+}
+
+
+
+// UpdateTenant updates an existing tenant
+func (s *Service) UpdateTenant(ctx context.Context, tenantID uuid.UUID, req *UpdateTenantRequest) (*sqlc.Tenant, error) {
+	// Get existing tenant
+	existing, err := s.repo.GetTenantByID(ctx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get existing tenant: %w", err)
+	}
+
+	// Apply updates
+	name := existing.Name
+	domain := existing.Domain
+	subdomain := existing.Subdomain
+	isActive := existing.IsActive
+
+	if req.Name != nil {
+		name = *req.Name
+	}
+	if req.Domain != nil {
+		domain = *req.Domain
+	}
+	if req.Subdomain != nil {
+		subdomain = pgtype.Text{String: *req.Subdomain, Valid: true}
+	}
+	if req.IsActive != nil {
+		isActive = pgtype.Bool{Bool: *req.IsActive, Valid: true}
+	}
+
+	// Update tenant in database
+	sqlcTenant, err := s.repo.UpdateTenant(ctx, sqlc.UpdateTenantParams{
+		ID:        tenantID,
+		Name:      name,
+		Domain:    domain,
+		Subdomain: subdomain,
+		IsActive:  isActive,
+	})
+	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "UpdateTenant").
+			Str("tenant_id", tenantID.String()).
+			Err(err).
+			Msg("Failed to update tenant in database")
+		return nil, fmt.Errorf("failed to update tenant: %w", err)
+	}
+
+	// Update settings if provided
+	if req.Settings != nil || req.AdminEmail != nil {
+		// Get current settings to merge with updates
+		currentSettings := make(map[string]interface{})
+		if len(sqlcTenant.Settings) > 0 {
+			json.Unmarshal(sqlcTenant.Settings, &currentSettings)
+		}
+
+		// Update settings if provided
+		if req.Settings != nil {
+			currentSettings["otp_enabled"] = req.Settings.OTPEnabled
+			currentSettings["session_timeout_minutes"] = req.Settings.SessionTimeoutMinutes
+			currentSettings["allowed_origins"] = req.Settings.AllowedOrigins
+			currentSettings["rate_limit_per_minute"] = req.Settings.RateLimitPerMinute
+			currentSettings["require_email_verification"] = req.Settings.RequireEmailVerification
+			currentSettings["custom_branding"] = req.Settings.CustomBranding
+		}
+
+		// Update admin email if provided
+		if req.AdminEmail != nil {
+			currentSettings["admin_email"] = *req.AdminEmail
+		}
+
+		settingsJSON, err := json.Marshal(currentSettings)
+		if err != nil {
+			log.Error().
+				Str("pkg", pkgName).
+				Str("method", "UpdateTenant").
+				Str("tenant_id", tenantID.String()).
+				Err(err).
+				Msg("Failed to marshal tenant settings")
+			return nil, fmt.Errorf("failed to marshal settings: %w", err)
+		}
+		
+		err = s.repo.UpdateTenantSettings(ctx, sqlc.UpdateTenantSettingsParams{
+			ID:       tenantID,
+			Settings: settingsJSON,
+		})
+		if err != nil {
+			log.Error().
+				Str("pkg", pkgName).
+				Str("method", "UpdateTenant").
+				Str("tenant_id", tenantID.String()).
+				Err(err).
+				Msg("Failed to update tenant settings")
+			return nil, fmt.Errorf("failed to update tenant settings: %w", err)
+		}
+		
+		// Get updated tenant with new settings
+		sqlcTenant, err = s.repo.GetTenantByID(ctx, tenantID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get updated tenant: %w", err)
+		}
+	}
+
+	// Clear cache to ensure fresh data
+	s.clearCache()
+
+	log.Info().
+		Str("pkg", pkgName).
+		Str("method", "UpdateTenant").
+		Str("tenant_id", tenantID.String()).
+		Msg("Tenant updated successfully")
+
+	return &sqlcTenant, nil
+}
+
+// DeleteTenant deletes a tenant by ID
+func (s *Service) DeleteTenant(ctx context.Context, tenantID uuid.UUID) error {
+	err := s.repo.DeleteTenant(ctx, tenantID)
+	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "DeleteTenant").
+			Str("tenant_id", tenantID.String()).
+			Err(err).
+			Msg("Failed to delete tenant")
+		return fmt.Errorf("failed to delete tenant: %w", err)
+	}
+
+	// Clear cache to ensure fresh data
+	s.clearCache()
+
+	log.Info().
+		Str("pkg", pkgName).
+		Str("method", "DeleteTenant").
+		Str("tenant_id", tenantID.String()).
+		Msg("Tenant deleted successfully")
+
+	return nil
 }
 
 // GetCacheStats returns cache statistics for monitoring

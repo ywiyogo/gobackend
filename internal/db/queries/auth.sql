@@ -209,6 +209,16 @@ UPDATE tenants
 SET is_active = $2, updated_at = NOW()
 WHERE id = $1;
 
+-- name: UpdateTenant :one
+UPDATE tenants
+SET name = $2,
+    domain = $3,
+    subdomain = $4,
+    is_active = $5,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING *;
+
 -- name: DeleteTenantByID :exec
 DELETE FROM tenants
 WHERE id = $1;

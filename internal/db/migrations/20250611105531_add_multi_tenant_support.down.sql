@@ -26,3 +26,12 @@ ALTER TABLE users DROP COLUMN IF EXISTS tenant_id;
 
 -- Drop tenants table
 DROP TABLE IF EXISTS tenants;
+
+-- Log the removal
+DO $$
+BEGIN
+    RAISE NOTICE 'Removed initial tenants: Test Project (localhost:3000)';
+END $$;
+
+-- Drop pgcrypto extension (only if no other objects depend on it)
+DROP EXTENSION IF EXISTS pgcrypto;

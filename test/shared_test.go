@@ -153,7 +153,7 @@ func setupTestServerWithOTP(t *testing.T, otpEnabled bool) *TestServer {
 		Settings: settings,
 	}
 
-	testTenant, err := tenantService.CreateTenant(req)
+	testTenant, err := tenantService.CreateTenantAdmin(context.Background(), req)
 	require.NoError(t, err)
 
 	defaultTenant.DefaultTenant = testTenant
@@ -209,7 +209,7 @@ func (ts *TestServer) setupTestTenantWithOTP(t *testing.T, domain string, otpEna
 		Settings: settings,
 	}
 
-	testTenant, err := ts.TenantService.CreateTenant(req)
+	testTenant, err := ts.TenantService.CreateTenantAdmin(context.Background(), req)
 	require.NoError(t, err)
 
 	return testTenant
