@@ -8,16 +8,17 @@
 ⚡ **Performance** - Built on Go's efficient `net/http` with minimal external dependencies  
 🔧 **Developer Experience** - Hot reloading, comprehensive testing, and Docker support  
 🎯 **Flexibility** - Supports both password and OTP-based authentication flows  
-📦 **Production Ready** - Rate limiting, proper error handling, and database migrations  
+🏢 **Multi-Tenant** - Complete tenant isolation with domain-based routing  
+📦 **Production Ready** - Rate limiting, proper error handling, and database migrations
 
 ## 🎯 Key Features
 
+- **Multi-Tenant Architecture**: Complete tenant isolation with domain-based routing
 - **Dual Authentication Modes**: Password-based or OTP-based authentication
 - **Session Management**: Secure cookie-based sessions with CSRF protection
 - **Hot Reloading**: Instant feedback during development with Air
 - **Comprehensive Testing**: Unit and integration tests with Docker test environment
 - **Database Integration**: PostgreSQL with migrations and type-safe queries (sqlc)
-- **Rate Limiting**: Built-in protection against abuse
 - **RESTful API**: Clean endpoints for notes management and authentication
 
 ## 🛠 Tech Stack
@@ -41,14 +42,24 @@ migrate -path internal/db/migrations -database "postgres://${DB_USER}:${DB_PASSW
 
 ### 2. Test the API
 ```bash
-# Register a new user
-curl -X POST http://localhost:8080/register -d "email=user@example.com" -d "password=mypassword123"
+# Register a new user (with tenant origin)
+curl -X POST http://localhost:8080/register \
+  -H "Origin: example.com" \
+  -d "email=user@example.com" \
+  -d "password=mypassword123"
 
-# Login and get session
-curl -X POST http://localhost:8080/login -d "email=user@example.com" -d "password=mypassword123" -c cookies.txt
+# Login and get session (with tenant origin)
+curl -X POST http://localhost:8080/login \
+  -H "Origin: example.com" \
+  -d "email=user@example.com" \
+  -d "password=mypassword123" \
+  -c cookies.txt
 
 # Access protected dashboard
-curl -X POST http://localhost:8080/dashboard -H "X-CSRF-Token: YOUR_TOKEN" -b cookies.txt
+curl -X POST http://localhost:8080/dashboard \
+  -H "Origin: example.com" \
+  -H "X-CSRF-Token: YOUR_TOKEN" \
+  -b cookies.txt
 ```
 
 ## 🧪 Testing
@@ -90,10 +101,35 @@ docker compose down --rmi local -v
 │   ├── api/          # HTTP handlers and routing
 │   ├── auth/         # Authentication service and repository
 │   ├── db/           # Database migrations and queries
+│   ├── tenant/       # Multi-tenant management and middleware
 │   └── notes/        # Notes management features
 ├── test/             # Integration tests and Docker setup
 ├── docs/             # Documentation (auth workflow, etc.)
+├── config/           # Tenant configuration files
 └── docker-compose.yml
+```
+
+## 🏢 Multi-Tenant Architecture
+
+The application supports complete tenant isolation:
+
+- **Domain-based Resolution**: Each tenant is identified by their domain via `Origin` header
+- **Data Isolation**: All user data is scoped to the tenant context
+- **Configuration Management**: YAML-based tenant configuration with auto-sync
+
+### Tenant Headers
+All requests must include:
+```
+Origin: your-tenant-domain.com
+```
+
+### Tenant Configuration
+Configure tenants in `config/tenants.yaml`:
+```yaml
+tenants:
+  - name: "Example Tenant"
+    domain: "example.com"
+    is_active: true
 ```
 
 ## 🔐 Authentication Modes

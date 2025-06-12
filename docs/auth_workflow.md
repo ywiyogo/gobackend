@@ -2,68 +2,82 @@
 
 ## Overview
 
-This application supports two authentication modes:
+This application supports two authentication modes with multi-tenant isolation:
 - **Password-based authentication** (OTP_ENABLED=false)
 - **OTP-based authentication** (OTP_ENABLED=true)
 
 Both modes use session tokens with CSRF protection for secure API access.
 
+## Multi-Tenant Architecture
+
+All authentication operations are tenant-scoped:
+- **Domain Resolution**: Each tenant is identified by their domain via the `Origin` header
+- **Data Isolation**: Users, sessions, and all data are completely isolated per tenant
+
 ## Authentication Flows
 
 ```mermaid
 flowchart TD
-    A[POST /register] --> B{OTP_ENABLED?}
-    B -->|Yes| C[Create user with OTP]
-    B -->|No| D[Create user with password]
+    A[POST /register] --> A1[Tenant Middleware]
+    A1 --> A2[Resolve tenant from Origin header]
+    A2 --> B{OTP_ENABLED?}
+    B -->|Yes| C[Create user with OTP in tenant]
+    B -->|No| D[Create user with password in tenant]
     C --> E[Generate session + CSRF tokens]
     D --> F[Registration complete]
     E --> G[Set session cookie]
 
-    H[POST /login] --> I{OTP_ENABLED?}
-    I -->|Yes| J[Generate new OTP]
-    I -->|No| K[Validate password]
+    H[POST /login] --> H1[Tenant Middleware]
+    H1 --> H2[Resolve tenant from Origin header]
+    H2 --> I{OTP_ENABLED?}
+    I -->|Yes| J[Generate new OTP for tenant user]
+    I -->|No| K[Validate password for tenant user]
     J --> L[Generate session + CSRF tokens]
     K --> L
     L --> M[Set session cookie]
     M --> N[Return CSRF token]
 
-    O[POST /verify-otp] --> P[Validate OTP]
+    O[POST /verify-otp] --> O1[Tenant Middleware]
+    O1 --> O2[Resolve tenant from Origin header]
+    O2 --> P[Validate OTP for tenant user]
     P --> Q[Update session token]
     Q --> R[Return new CSRF token]
 
-    S[POST /protected] --> T[AuthMiddleware]
-    T --> U[Validate session cookie]
+    S[POST /protected] --> S1[Tenant Middleware]
+    S1 --> S2[Resolve tenant from Origin header]
+    S2 --> T[AuthMiddleware]
+    T --> U[Validate session cookie in tenant context]
     U --> V[Validate CSRF header]
-    V --> W[Grant access]
+    V --> W[Grant access to tenant data]
 
-    X[POST /logout] --> Y[Delete session]
+    X[POST /logout] --> X1[Tenant Middleware]
+    X1 --> X2[Resolve tenant from Origin header]
+    X2 --> Y[Delete session from tenant]
     Y --> Z[Clear cookies]
 ```
 
 ## Authentication Components
 
 ### 1. Session Management
-- **Session Token**: Stored in HttpOnly cookie, validated against database
-- **CSRF Token**: Returned in response body, must be sent in `X-CSRF-Token` header
-- **Session Storage**: Database-backed with expiration (24 hours)
-- **Device Sessions**: Multiple concurrent sessions supported per user
+- **Session Token**: Stored in HttpOnly cookie, validated within tenant context
+- **CSRF Token**: Returned in response body, sent in `X-CSRF-Token` header
+- **Session Storage**: Database-backed with 24-hour expiration, scoped to tenant
+- **Tenant Isolation**: All sessions are isolated per tenant
 
 ### 2. Password Authentication (OTP_ENABLED=false)
-- **Registration**: Creates user with hashed password (bcrypt)
-- **Login**: Validates credentials and creates session
-- **Security**: Minimum 6 character password requirement
+- **Registration**: Creates user with hashed password within tenant
+- **Login**: Validates credentials and creates session for tenant user
+- **Tenant Scoping**: Same email can exist in different tenants
 
 ### 3. OTP Authentication (OTP_ENABLED=true)
-- **Registration**: Creates user and generates initial OTP
-- **Login**: Generates new OTP for existing users
+- **Registration**: Creates user and generates initial OTP within tenant
+- **Login**: Generates new OTP for existing tenant users
 - **Verification**: 6-digit OTP with 5-minute expiration
-- **Session**: Temporary session for OTP verification, upgraded after validation
 
 ### 4. Security Features
 - **CSRF Protection**: Required for all protected endpoints
 - **Session Validation**: Automatic expiry and cleanup
-- **Device Management**: Sessions isolated by user agent and IP
-- **Rate Limiting**: Built-in middleware support
+- **Tenant Isolation**: Complete data separation between tenants
 
 ## API Endpoints
 
@@ -72,6 +86,7 @@ flowchart TD
 **Password Mode:**
 ```bash
 curl -X POST http://localhost:8080/register \
+     -H "Origin: example.com" \
      -d "email=user@example.com" \
      -d "password=mypassword123"
 ```
@@ -79,6 +94,7 @@ curl -X POST http://localhost:8080/register \
 **OTP Mode:**
 ```bash
 curl -X POST http://localhost:8080/register \
+     -H "Origin: example.com" \
      -d "email=user@example.com" \
      -c cookies.txt
 # Response: "Setting cookie with session token: xxx, CSRF: yyy. OTP: 123456"
@@ -89,6 +105,7 @@ curl -X POST http://localhost:8080/register \
 **Password Mode:**
 ```bash
 curl -X POST http://localhost:8080/login \
+     -H "Origin: example.com" \
      -d "email=user@example.com" \
      -d "password=mypassword123" \
      -c cookies.txt
@@ -99,6 +116,7 @@ curl -X POST http://localhost:8080/login \
 **OTP Mode:**
 ```bash
 curl -X POST http://localhost:8080/login \
+     -H "Origin: example.com" \
      -d "email=user@example.com" \
      -c cookies.txt
 # Response: "User with email user@example.com logged in successfully!
@@ -109,6 +127,7 @@ curl -X POST http://localhost:8080/login \
 
 ```bash
 curl -X POST http://localhost:8080/verify-otp \
+     -H "Origin: example.com" \
      -d "otp_code=123456" \
      -H "X-CSRF-Token: YOUR_CSRF_TOKEN" \
      -b cookies.txt
@@ -123,6 +142,7 @@ CSRF_TOKEN="your_csrf_token_from_login_response"
 
 # Access protected endpoint
 curl -X POST http://localhost:8080/dashboard \
+     -H "Origin: example.com" \
      -H "X-CSRF-Token: $CSRF_TOKEN" \
      -b cookies.txt
 # Response: "Dashboard accessed successfully. Found session_token: xxx"
@@ -132,6 +152,7 @@ curl -X POST http://localhost:8080/dashboard \
 
 ```bash
 curl -X POST http://localhost:8080/logout \
+     -H "Origin: example.com" \
      -H "X-CSRF-Token: YOUR_CSRF_TOKEN" \
      -c cookies.txt
 ```
@@ -157,7 +178,7 @@ Note, `curl` automatically uses POST method when sending data (-d flag). The -X 
 - HttpOnly cookies prevent XSS access
 - Secure flag enabled in production
 - 24-hour expiration with automatic cleanup
-- Device-specific session isolation
+- Complete tenant data isolation
 
 ### CSRF Protection
 - Stateful CSRF tokens stored in database
@@ -192,7 +213,12 @@ OTP_ENABLED=true
 - Docker-based test environment with migrations
 
 ### Database Schema
-- `users` table: email, password_hash, otp_code, otp_expires_at
-- `sessions` table: user_id, session_token, csrf_token, user_agent, ip, expires_at
-- Automatic UUID generation for user IDs
-- Indexed columns for performance
+- `tenants` table: id, name, domain, api_key, settings, is_active
+- `users` table: id, tenant_id, email, password_hash, otp_code, otp_expires_at
+- `sessions` table: id, tenant_id, user_id, session_token, csrf_token, user_agent, ip, expires_at
+- All tables include tenant_id for complete data isolation
+
+### Tenant Management
+- **Configuration**: YAML-based with auto-sync on startup
+- **Domain Resolution**: Tenant identified via Origin header
+- **Data Isolation**: All queries scoped to tenant context
