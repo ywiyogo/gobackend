@@ -129,7 +129,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 			Message:     "OTP sent to your email. Please verify to complete registration.",
 			ExpiresAt:   expiresAt,
 		}
-		
+
 		// For testing purposes, include OTP in development/test environment
 		if os.Getenv("ENV") == "test" || os.Getenv("ENV") == "development" {
 			// Create a map to include OTP for testing
@@ -278,7 +278,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 			Message:     "OTP sent to your email. Please verify to complete login.",
 			ExpiresAt:   session.ExpiresAt,
 		}
-		
+
 		// For testing purposes, include OTP in development/test environment
 		if os.Getenv("ENV") == "test" || os.Getenv("ENV") == "development" {
 			// Create a map to include OTP for testing

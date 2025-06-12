@@ -50,16 +50,16 @@ func main() {
 	defer pool.Close()
 
 	queries := sqlc.New(pool)
-	
+
 	// Sync tenants from configuration file at startup
 	log.Default().Println("Syncing tenants from configuration...")
-	
+
 	tenantSyncService := tenant.NewTenantSyncService(pool)
 	if err := tenantSyncService.SyncTenantsFromConfig("config/tenants.yaml"); err != nil {
 		log.Printf("Warning: Failed to sync tenants from config: %v", err)
 		log.Printf("Continuing without tenant sync - tenants may need to be created manually")
 	}
-	
+
 	// Initialize repositories and services based on the repository pattern
 	log.Default().Println("Setting up authentication repository and service...")
 	if queries == nil {

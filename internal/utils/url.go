@@ -54,12 +54,12 @@ func ExtractHostFromURL(urlStr string) string {
 	} else if strings.HasPrefix(urlStr, "https://") {
 		urlStr = strings.TrimPrefix(urlStr, "https://")
 	}
-	
+
 	// Remove path if present (take only the host part)
 	if idx := strings.Index(urlStr, "/"); idx != -1 {
 		urlStr = urlStr[:idx]
 	}
-	
+
 	return urlStr
 }
 
@@ -86,9 +86,9 @@ func ParseOriginHeader(originHeader, refererHeader, hostHeader string, isTLS boo
 
 // IsLocalhost checks if the given domain/host is a localhost variant
 func IsLocalhost(domain string) bool {
-	return strings.Contains(domain, "localhost") || 
-		   strings.Contains(domain, "127.0.0.1") ||
-		   strings.HasPrefix(domain, "0.0.0.0")
+	return strings.Contains(domain, "localhost") ||
+		strings.Contains(domain, "127.0.0.1") ||
+		strings.HasPrefix(domain, "0.0.0.0")
 }
 
 // NormalizeDomain normalizes a domain for consistent tenant matching
@@ -97,12 +97,12 @@ func NormalizeDomain(domain string) string {
 	if domain == "" {
 		return ""
 	}
-	
+
 	// Remove www prefix
 	domain = strings.TrimPrefix(domain, "www.")
-	
+
 	// Convert to lowercase for case-insensitive matching
 	domain = strings.ToLower(domain)
-	
+
 	return domain
 }
