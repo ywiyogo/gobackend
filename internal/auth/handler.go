@@ -125,10 +125,26 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		response := &AuthResponse{
 			User:        ToUserResponse(user),
 			RequiresOTP: true,
+			CSRFToken:   session.CsrfToken,
 			Message:     "OTP sent to your email. Please verify to complete registration.",
 			ExpiresAt:   expiresAt,
 		}
-		h.writeJSON(w, response, http.StatusOK)
+		
+		// For testing purposes, include OTP in development/test environment
+		if os.Getenv("ENV") == "test" || os.Getenv("ENV") == "development" {
+			// Create a map to include OTP for testing
+			responseMap := map[string]interface{}{
+				"user":         response.User,
+				"requires_otp": response.RequiresOTP,
+				"csrf_token":   response.CSRFToken,
+				"message":      response.Message,
+				"expires_at":   response.ExpiresAt,
+				"otp":          otpCode,
+			}
+			h.writeJSON(w, responseMap, http.StatusOK)
+		} else {
+			h.writeJSON(w, response, http.StatusOK)
+		}
 
 	} else {
 		// Password-based registration
@@ -258,10 +274,26 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		response := &AuthResponse{
 			User:        ToUserResponse(user),
 			RequiresOTP: true,
+			CSRFToken:   session.CsrfToken,
 			Message:     "OTP sent to your email. Please verify to complete login.",
 			ExpiresAt:   session.ExpiresAt,
 		}
-		h.writeJSON(w, response, http.StatusOK)
+		
+		// For testing purposes, include OTP in development/test environment
+		if os.Getenv("ENV") == "test" || os.Getenv("ENV") == "development" {
+			// Create a map to include OTP for testing
+			responseMap := map[string]interface{}{
+				"user":         response.User,
+				"requires_otp": response.RequiresOTP,
+				"csrf_token":   response.CSRFToken,
+				"message":      response.Message,
+				"expires_at":   response.ExpiresAt,
+				"otp":          otpCode,
+			}
+			h.writeJSON(w, responseMap, http.StatusOK)
+		} else {
+			h.writeJSON(w, response, http.StatusOK)
+		}
 
 	} else {
 		// Password-based login
@@ -582,6 +614,8 @@ func (h *Handler) handleAuthError(w http.ResponseWriter, err error) {
 		h.writeError(w, "User already exists in this application", http.StatusConflict)
 	} else if strings.Contains(errMsg, "not found") || strings.Contains(errMsg, "invalid credentials") {
 		h.writeError(w, "Invalid credentials", http.StatusUnauthorized)
+	} else if strings.Contains(errMsg, "invalid OTP") {
+		h.writeError(w, "Invalid OTP code", http.StatusUnauthorized)
 	} else if strings.Contains(errMsg, "invalid") || strings.Contains(errMsg, "expired") {
 		h.writeError(w, errMsg, http.StatusBadRequest)
 	} else {

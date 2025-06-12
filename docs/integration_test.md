@@ -20,10 +20,14 @@ The integration test suite is built on these principles:
 
 ```
 test/
-├── integration_test.go     # Main test implementation
-├── run-docker.sh          # Docker-based test runner
-├── setup-docker.sh        # Docker environment setup
-└── README.md             # Quick reference guide
+├── shared_test.go                          # Shared setup test implementation
+├── integration_otp_auth_test.go
+├── integration_otp_multi_tenants_test.go
+├── integration_paswd_auth_test.go
+├── integration_paswd_multi_tenants_test.go
+├── run-docker.sh                            # Docker-based test runner
+├── setup-docker.sh                          # Docker environment setup
+└── README.md                                # Quick reference guide
 ```
 
 ## Test Implementation Details

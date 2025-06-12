@@ -32,7 +32,7 @@ type AuthResponse struct {
 	SessionToken string        `json:"session_token,omitempty"`
 	CSRFToken    string        `json:"csrf_token,omitempty"`
 	ExpiresAt    time.Time     `json:"expires_at"`
-	RequiresOTP  bool          `json:"requires_otp,omitempty"`
+	RequiresOTP  bool          `json:"requires_otp"`
 	Message      string        `json:"message,omitempty"`
 }
 
