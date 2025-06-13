@@ -23,9 +23,9 @@ func Home(w http.ResponseWriter, r *http.Request) {
 }
 
 func initEnvironment() (string, string, string, string, string) {
-	// Load environment variables from .env file
+	// Load environment variables from .env file (optional for Docker)
 	if err := godotenv.Load(); err != nil {
-		log.Fatal("Error loading .env file")
+		log.Printf("Warning: .env file not found (this is normal in Docker): %v", err)
 	}
 
 	return os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME"), os.Getenv("DB_HOST"), os.Getenv("DB_PORT")
@@ -130,10 +130,10 @@ func main() {
 
 	// Admin routes for tenant management (no tenant middleware needed)
 	routesAdmin := map[string]http.HandlerFunc{
-		"GET /admin/tenants":      tenantAdminHandler.GetTenants,
-		"POST /admin/tenants":     tenantAdminHandler.CreateTenant,
-		"GET /admin/tenants/{id}": tenantAdminHandler.GetTenant,
-		"PUT /admin/tenants/{id}": tenantAdminHandler.UpdateTenant,
+		"GET /admin/tenants":         tenantAdminHandler.GetTenants,
+		"POST /admin/tenants":        tenantAdminHandler.CreateTenant,
+		"GET /admin/tenants/{id}":    tenantAdminHandler.GetTenant,
+		"PUT /admin/tenants/{id}":    tenantAdminHandler.UpdateTenant,
 		"DELETE /admin/tenants/{id}": tenantAdminHandler.DeleteTenant,
 	}
 	router.AppendHandlerFromMapWithoutMiddleware(routesAdmin)
