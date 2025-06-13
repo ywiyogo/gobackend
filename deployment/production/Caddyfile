@@ -1,14 +1,17 @@
 # Flexible domain configuration for dynamic tenant management
 # Replace 'your-domain.com' with your actual domain
 *.your-domain.com, your-domain.com {
-    # Basic rate limiting
-    rate_limit {
-        zone production_rl {
-            key {remote_addr}
-            window 1m
-            events 100
-        }
+    # Basic DDoS protection using request limiting
+    @high_frequency {
+        header_regexp User-Agent "(?i)(bot|crawler|spider)"
     }
+    respond @high_frequency "Rate limited" 429
+
+    # In case using Cloudflare and xcaddy cloudflare is installed
+    # tls {
+    #   dns cloudflare <api_key>
+    # }
+
 
     # Main application
     reverse_proxy backend:8080 {
