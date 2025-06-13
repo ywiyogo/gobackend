@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   db:
     image: postgres:15
@@ -30,14 +28,17 @@ services:
       - ../../internal/db/migrations:/migrations
     networks:
       - app-network
-    command: [
-      "-path", "/migrations",
-      "-database", "postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?sslmode=disable",
-      "up"
-    ]
+    command:
+      [
+        "-path",
+        "/migrations",
+        "-database",
+        "postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?sslmode=disable",
+        "up",
+      ]
 
   backend:
-    build: 
+    build:
       context: ../..
       dockerfile: Dockerfile
     restart: unless-stopped
@@ -63,7 +64,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "2019:2019"  # Admin endpoint
+      - "2019:2019" # Admin endpoint
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data

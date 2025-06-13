@@ -2,35 +2,20 @@
 
 Simple deployment configurations for the Go Backend application with multi-tenant support.
 
-## 📁 Directory Structure
-
-```
-deployment/
-├── production/           # Production deployment files
-│   ├── docker compose.yml
-│   ├── Caddyfile
-│   ├── deploy.sh
-│   └── .env.example
-└── README.md           # This file
-```
-
 ## 🎯 Quick Start
 
 ### Production Deployment
 
 ```bash
-# 1. Navigate to production deployment
-cd deployment/production
-
-# 2. Configure environment
-cp .env.example .env
+# 1. Configure environment. Don't move it to the project root folder
+cp deployment/production/.env.example deployment/production/.env
 # Edit .env with your production values
 
-# 3. Update domains in Caddyfile
+# 2. Update domains in Caddyfile
 # Edit Caddyfile with your actual domains
 
-# 4. Deploy
-chmod +x deploy.sh
+# 3. Deploy
+chmod +x deployment/production/deploy.sh
 ./deploy.sh
 ```
 

@@ -70,12 +70,15 @@ check_prerequisites() {
 pull_latest_changes() {
     log_info "Pulling latest changes..."
     cd "${PROJECT_ROOT}"
-    git pull origin main
+    git pull origin master
     log_success "Code updated"
 }
 
 build_and_deploy() {
     log_info "Building and deploying..."
+
+    # Ensure we're in the right directory for docker compose
+    cd "$SCRIPT_DIR"
 
     # Stop existing containers
     docker compose down || true
