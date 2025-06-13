@@ -1,0 +1,56 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # Allow manual deployment
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+          
+      - name: Deploy to VPS
+        run: |
+          ssh -i ~/.ssh/id_rsa ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
+            cd ${{ secrets.VPS_PROJECT_PATH || '/opt/gobackend' }}
+            git pull origin main
+            cd deployment/production
+            ./deploy.sh
+          EOF
+          
+      - name: Verify deployment
+        run: |
+          # Wait a moment for services to start
+          sleep 30
+          
+          # Check if the application is responding
+          ssh -i ~/.ssh/id_rsa ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
+            # Test health endpoint
+            if curl -f -s http://localhost/health > /dev/null; then
+              echo "✅ Deployment successful - health check passed"
+            else
+              echo "❌ Deployment failed - health check failed"
+              exit 1
+            fi
+          EOF
+          
+      - name: Notify deployment status
+        if: always()
+        run: |
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "🚀 Production deployment completed successfully!"
+          else
+            echo "💥 Production deployment failed!"
+          fi

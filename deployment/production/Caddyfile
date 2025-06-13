@@ -1,0 +1,59 @@
+# Flexible domain configuration for dynamic tenant management
+# Replace 'your-domain.com' with your actual domain
+*.your-domain.com, your-domain.com {
+    # Basic rate limiting
+    rate_limit {
+        zone production_rl {
+            key {remote_addr}
+            window 1m
+            events 100
+        }
+    }
+
+    # Main application
+    reverse_proxy backend:8080 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_addr}
+        header_up X-Forwarded-For {remote_addr}
+        header_up X-Forwarded-Proto {scheme}
+        header_up Origin {host}
+    }
+
+    # Basic security headers
+    header {
+        -Server
+        X-Content-Type-Options nosniff
+        X-Frame-Options SAMEORIGIN
+        X-XSS-Protection "1; mode=block"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    }
+}
+
+# Development/localhost configuration
+localhost, localhost:3000, localhost:8080 {
+    # Main application
+    reverse_proxy backend:8080 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_addr}
+        header_up X-Forwarded-For {remote_addr}
+        header_up X-Forwarded-Proto {scheme}
+        header_up Origin {host}
+    }
+
+    # Basic security headers
+    header {
+        -Server
+        X-Content-Type-Options nosniff
+        X-Frame-Options SAMEORIGIN
+        X-XSS-Protection "1; mode=block"
+    }
+}
+
+# Global settings
+{
+    # Email for Let's Encrypt (replace with your email)
+    email {$ACME_EMAIL}
+
+    # Global admin endpoint
+    admin :2019
+}
