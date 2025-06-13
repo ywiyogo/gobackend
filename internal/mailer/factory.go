@@ -12,7 +12,7 @@ import (
 func NewMailer() (Mailer, error) {
 	env := strings.ToLower(os.Getenv("ENV"))
 	smtpHost := os.Getenv("SMTP_HOST")
-	
+
 	// Use mock service in development/test environments or when SMTP is not configured
 	if env == "development" || env == "test" || smtpHost == "" {
 		log.Info().
@@ -20,7 +20,7 @@ func NewMailer() (Mailer, error) {
 			Str("environment", env).
 			Str("smtp_host", smtpHost).
 			Msg("Using mock mailer service")
-		
+
 		return NewMockService(), nil
 	}
 
@@ -30,14 +30,14 @@ func NewMailer() (Mailer, error) {
 		Str("environment", env).
 		Str("smtp_host", smtpHost).
 		Msg("Using real SMTP mailer service")
-	
+
 	service, err := NewService()
 	if err != nil {
 		log.Error().
 			Str("pkg", pkgName).
 			Err(err).
 			Msg("Failed to create SMTP mailer service, falling back to mock")
-		
+
 		return NewMockService(), nil
 	}
 

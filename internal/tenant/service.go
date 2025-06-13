@@ -412,8 +412,6 @@ func (s *Service) GetTenantByID(ctx context.Context, tenantID uuid.UUID) (*sqlc.
 	return &sqlcTenant, nil
 }
 
-
-
 // UpdateTenant updates an existing tenant
 func (s *Service) UpdateTenant(ctx context.Context, tenantID uuid.UUID, req *UpdateTenantRequest) (*sqlc.Tenant, error) {
 	// Get existing tenant
@@ -492,7 +490,7 @@ func (s *Service) UpdateTenant(ctx context.Context, tenantID uuid.UUID, req *Upd
 				Msg("Failed to marshal tenant settings")
 			return nil, fmt.Errorf("failed to marshal settings: %w", err)
 		}
-		
+
 		err = s.repo.UpdateTenantSettings(ctx, sqlc.UpdateTenantSettingsParams{
 			ID:       tenantID,
 			Settings: settingsJSON,
@@ -506,7 +504,7 @@ func (s *Service) UpdateTenant(ctx context.Context, tenantID uuid.UUID, req *Upd
 				Msg("Failed to update tenant settings")
 			return nil, fmt.Errorf("failed to update tenant settings: %w", err)
 		}
-		
+
 		// Get updated tenant with new settings
 		sqlcTenant, err = s.repo.GetTenantByID(ctx, tenantID)
 		if err != nil {

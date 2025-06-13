@@ -217,7 +217,7 @@ This is an automated message. Please do not reply to this email.
 // SendOTP sends an OTP verification email
 func (s *Service) SendOTP(toEmail, toName, otpCode string, expiryTime time.Time, tenantName string) error {
 	subject := fmt.Sprintf("Email Verification Code: %s", otpCode)
-	
+
 	emailData := EmailData{
 		ToEmail:     toEmail,
 		ToName:      toName,
@@ -237,7 +237,7 @@ func (s *Service) SendOTP(toEmail, toName, otpCode string, expiryTime time.Time,
 			Str("template", "otp").
 			Err(err).
 			Msg("Failed to render HTML template")
-		
+
 		// Fallback to plain text
 		return s.sendPlainTextOTP(emailData)
 	}
@@ -333,13 +333,13 @@ func (s *Service) buildMessage(toEmail, toName, subject, plainContent, htmlConte
 
 	// Headers
 	message.WriteString(fmt.Sprintf("From: %s <%s>\r\n", s.config.FromName, s.config.FromEmail))
-	
+
 	if toName != "" {
 		message.WriteString(fmt.Sprintf("To: %s <%s>\r\n", toName, toEmail))
 	} else {
 		message.WriteString(fmt.Sprintf("To: %s\r\n", toEmail))
 	}
-	
+
 	message.WriteString(fmt.Sprintf("Subject: %s\r\n", subject))
 	message.WriteString("MIME-Version: 1.0\r\n")
 
@@ -378,7 +378,7 @@ func (s *Service) buildMessage(toEmail, toName, subject, plainContent, htmlConte
 func (s *Service) TestConnection() error {
 	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
 	auth := smtp.PlainAuth("", s.config.Username, s.config.Password, s.config.Host)
-	
+
 	// Try to connect and authenticate
 	client, err := smtp.Dial(addr)
 	if err != nil {

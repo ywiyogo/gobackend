@@ -16,13 +16,13 @@ type MockService struct {
 
 // MockEmail represents an email that was "sent" by the mock service
 type MockEmail struct {
-	ToEmail     string
-	ToName      string
-	Subject     string
-	OTPCode     string
-	TenantName  string
-	ExpiryTime  time.Time
-	SentAt      time.Time
+	ToEmail    string
+	ToName     string
+	Subject    string
+	OTPCode    string
+	TenantName string
+	ExpiryTime time.Time
+	SentAt     time.Time
 }
 
 // NewMockService creates a new mock mailer service

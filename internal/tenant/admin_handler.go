@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strings"
 
-	"gobackend/internal/db/sqlc"
 	"github.com/google/uuid"
+	"gobackend/internal/db/sqlc"
 )
 
 // AdminHandler handles tenant management API endpoints
@@ -23,8 +23,6 @@ func NewAdminHandler(service *Service) *AdminHandler {
 		service: service,
 	}
 }
-
-
 
 // CreateTenant handles POST /admin/tenants
 func (h *AdminHandler) CreateTenant(w http.ResponseWriter, r *http.Request) {
@@ -60,8 +58,6 @@ func (h *AdminHandler) CreateTenant(w http.ResponseWriter, r *http.Request) {
 		h.sendError(w, http.StatusConflict, "Tenant Exists", fmt.Sprintf("Tenant with domain '%s' already exists", req.Domain))
 		return
 	}
-
-
 
 	// Set default settings if not provided
 	if req.Settings == nil {
@@ -163,8 +159,6 @@ func (h *AdminHandler) UpdateTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
-
 	updatedTenant, err := h.service.UpdateTenant(r.Context(), tenantUUID, &req)
 	if err != nil {
 		h.sendError(w, http.StatusInternalServerError, "Update Failed", err.Error())
@@ -210,8 +204,6 @@ func (h *AdminHandler) extractTenantID(r *http.Request) string {
 	}
 	return ""
 }
-
-
 
 func (h *AdminHandler) sqlcTenantToResponse(tenant *sqlc.Tenant) TenantResponse {
 	response := TenantResponse{

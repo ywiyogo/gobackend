@@ -3,8 +3,8 @@ package tenant
 import (
 	"context"
 
-	"gobackend/internal/db/sqlc"
 	"github.com/google/uuid"
+	"gobackend/internal/db/sqlc"
 )
 
 // Repository defines the interface for tenant data access operations

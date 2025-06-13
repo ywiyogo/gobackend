@@ -64,22 +64,22 @@ func GetTenantSettings(tenant *sqlc.Tenant) (*TenantSettings, error) {
 
 // CreateTenantRequest represents the request body for creating a tenant
 type CreateTenantRequest struct {
-	Name       string           `json:"name" validate:"required"`
-	Domain     string           `json:"domain" validate:"required"`
-	Subdomain  *string          `json:"subdomain,omitempty"`
-	Settings   *TenantSettings  `json:"settings,omitempty"`
-	AdminEmail string           `json:"admin_email" validate:"required,email"`
-	IsActive   bool             `json:"is_active"`
+	Name       string          `json:"name" validate:"required"`
+	Domain     string          `json:"domain" validate:"required"`
+	Subdomain  *string         `json:"subdomain,omitempty"`
+	Settings   *TenantSettings `json:"settings,omitempty"`
+	AdminEmail string          `json:"admin_email" validate:"required,email"`
+	IsActive   bool            `json:"is_active"`
 }
 
 // UpdateTenantRequest represents the request body for updating a tenant
 type UpdateTenantRequest struct {
-	Name       *string          `json:"name,omitempty"`
-	Domain     *string          `json:"domain,omitempty"`
-	Subdomain  *string          `json:"subdomain,omitempty"`
-	Settings   *TenantSettings  `json:"settings,omitempty"`
-	AdminEmail *string          `json:"admin_email,omitempty"`
-	IsActive   *bool            `json:"is_active,omitempty"`
+	Name       *string         `json:"name,omitempty"`
+	Domain     *string         `json:"domain,omitempty"`
+	Subdomain  *string         `json:"subdomain,omitempty"`
+	Settings   *TenantSettings `json:"settings,omitempty"`
+	AdminEmail *string         `json:"admin_email,omitempty"`
+	IsActive   *bool           `json:"is_active,omitempty"`
 }
 
 // TenantResponse represents the response body for tenant operations
