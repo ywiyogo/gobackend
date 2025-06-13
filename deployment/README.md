@@ -52,6 +52,9 @@ DB_NAME=gobackend_production
 
 # SSL Configuration
 ACME_EMAIL=your-email@example.com
+
+# SMTP Configuration for Email Service for OTP enabled
+
 ```
 
 ### Domain Configuration
@@ -150,6 +153,20 @@ docker compose logs backend
 
 # Test health endpoint
 curl -f http://localhost/health
+```
+
+** Safe Production Rollback Process**
+# 1. Create backup first
+```bash
+docker-compose exec db pg_dump -U ${DB_USER} ${DB_NAME} > backup_$(date +%Y%m%d_%H%M%S).sql
+```
+# 2. Run the rollback
+```bash
+docker-compose --profile emergency run --rm migrate-down
+```
+# 3. Restart backend if needed
+```bash
+docker-compose restart backend
 ```
 
 ## 📝 Deployment Checklist

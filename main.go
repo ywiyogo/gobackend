@@ -15,7 +15,6 @@ import (
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/joho/godotenv"
 )
 
 func Home(w http.ResponseWriter, r *http.Request) {
@@ -23,12 +22,35 @@ func Home(w http.ResponseWriter, r *http.Request) {
 }
 
 func initEnvironment() (string, string, string, string, string) {
-	// Load environment variables from .env file (optional for Docker)
-	if err := godotenv.Load(); err != nil {
-		log.Printf("Warning: .env file not found (this is normal in Docker): %v", err)
+	dbUser := os.Getenv("DB_USER")
+	dbPassword := os.Getenv("DB_PASSWORD")
+	dbName := os.Getenv("DB_NAME")
+	dbHost := os.Getenv("DB_HOST")
+	dbPort := os.Getenv("DB_PORT")
+
+	// Check for missing environment variables
+	missing := []string{}
+	if dbUser == "" {
+		missing = append(missing, "DB_USER")
+	}
+	if dbPassword == "" {
+		missing = append(missing, "DB_PASSWORD")
+	}
+	if dbName == "" {
+		missing = append(missing, "DB_NAME")
+	}
+	if dbHost == "" {
+		missing = append(missing, "DB_HOST")
+	}
+	if dbPort == "" {
+		missing = append(missing, "DB_PORT")
 	}
 
-	return os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME"), os.Getenv("DB_HOST"), os.Getenv("DB_PORT")
+	if len(missing) > 0 {
+		log.Fatalf("Missing required environment variables: %v", missing)
+	}
+
+	return dbUser, dbPassword, dbName, dbHost, dbPort
 }
 
 // main function to set up the HTTP server and routes
@@ -36,9 +58,6 @@ func main() {
 
 	// Get database credentials from environment
 	dbUser, dbPassword, dbName, dbHost, dbPort := initEnvironment()
-	if dbUser == "" || dbPassword == "" || dbName == "" || dbHost == "" || dbPort == "" {
-		log.Fatal("Database credentials are not set in environment variables")
-	}
 
 	log.Default().Println("Connecting to database...")
 	connStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
