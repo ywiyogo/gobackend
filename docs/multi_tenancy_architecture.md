@@ -234,7 +234,7 @@ type CreateTenantRequest struct {
 ### Phase 7: Deployment and Monitoring
 
 #### Step 7.2: Docker Configuration Update
-**Update**: `docker-compose.yml`
+**Update**: `docker compose.yml`
 
 ```yaml
 version: '3.8'
@@ -555,8 +555,8 @@ The multi-tenant database schema has been implemented and can be applied to exis
 
 4. **Deploy New Code**
    ```bash
-   docker-compose down
-   docker-compose up -d --build
+   docker compose down
+   docker compose up -d --build
    ```
 
 5. **Verify Migration**

@@ -262,12 +262,12 @@ assert.Equal(t, http.StatusOK, dashboardResp.StatusCode)
 2. **"Failed to start database service"**
    - Check if port 5432 is already in use
    - Verify `.env` file exists and has correct values
-   - Check Docker logs: `docker-compose logs db`
+   - Check Docker logs: `docker compose logs db`
 
 3. **"Database failed to start within timeout"**
    - Increase timeout in setup script
    - Check system resources (RAM, disk space)
-   - Try `docker-compose down --volumes` then restart
+   - Try `docker compose down --volumes` then restart
 
 ### Database Connection Issues
 
@@ -277,7 +277,7 @@ assert.Equal(t, http.StatusOK, dashboardResp.StatusCode)
    - Verify `.env` file format (no spaces around =)
 
 2. **"Unable to create connection pool"**
-   - For Docker: ensure container is running with `docker-compose ps`
+   - For Docker: ensure container is running with `docker compose ps`
    - For manual: verify database host and port are correct
    - Check firewall settings and ensure database exists
 

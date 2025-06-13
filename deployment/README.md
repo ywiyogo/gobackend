@@ -7,7 +7,7 @@ Simple deployment configurations for the Go Backend application with multi-tenan
 ```
 deployment/
 ├── production/           # Production deployment files
-│   ├── docker-compose.yml
+│   ├── docker compose.yml
 │   ├── Caddyfile
 │   ├── deploy.sh
 │   └── .env.example
@@ -105,16 +105,16 @@ The deployment script will:
 
 ```bash
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Check service status
-docker-compose ps
+docker compose ps
 
 # Restart services
-docker-compose restart
+docker compose restart
 
 # Access database
-docker-compose exec db psql -U $DB_USER $DB_NAME
+docker compose exec db psql -U $DB_USER $DB_NAME
 
 # Monitor resources
 docker stats
@@ -143,25 +143,25 @@ sudo ufw enable
 **SSL Certificate Problems**
 ```bash
 # Check Caddy logs
-docker-compose logs caddy
+docker compose logs caddy
 
 # Reload configuration
-docker-compose exec caddy caddy reload
+docker compose exec caddy caddy reload
 ```
 
 **Database Connection Issues**
 ```bash
 # Check database status
-docker-compose ps db
+docker compose ps db
 
 # Test connection
-docker-compose exec db pg_isready -h localhost -p 5432
+docker compose exec db pg_isready -h localhost -p 5432
 ```
 
 **Application Not Starting**
 ```bash
 # Check application logs
-docker-compose logs backend
+docker compose logs backend
 
 # Test health endpoint
 curl -f http://localhost/health
@@ -186,7 +186,7 @@ The deployment integrates with GitHub Actions for automated deployments on push 
 
 For deployment issues:
 
-1. Check logs: `docker-compose logs -f`
+1. Check logs: `docker compose logs -f`
 2. Verify configuration files
 3. Test health endpoints
 4. Check firewall and DNS settings

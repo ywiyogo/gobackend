@@ -42,21 +42,28 @@ print_banner() {
 
 check_prerequisites() {
     log_info "Checking prerequisites..."
-    
+
     # Check required commands
-    for cmd in docker docker-compose git; do
+    for cmd in docker git; do
         if ! command -v "$cmd" &> /dev/null; then
             log_error "$cmd is required but not installed."
             exit 1
         fi
     done
-    
+
+    # Check if Docker Compose is available (modern way)
+    if ! docker compose version &> /dev/null; then
+        log_error "Docker Compose is required but not available."
+        log_error "Make sure Docker Compose plugin is installed."
+        exit 1
+    fi
+
     # Check if .env file exists
     if [[ ! -f ".env" ]]; then
         log_error "Environment file not found. Please copy .env.example to .env"
         exit 1
     fi
-    
+
     log_success "Prerequisites check passed"
 }
 
@@ -69,22 +76,20 @@ pull_latest_changes() {
 
 build_and_deploy() {
     log_info "Building and deploying..."
-    
+
     # Stop existing containers
-    docker-compose down || true
-    
+    docker compose down || true
+
     # Build and start
-    docker-compose build --no-cache backend
-    docker-compose up -d
-    
+    docker compose build --no-cache backend
+    docker compose up -d
+
     log_success "Services started"
 }
 
-
-
 health_check() {
     log_info "Checking health..."
-    
+
     local count=0
     while [[ $count -lt $HEALTH_CHECK_TIMEOUT ]]; do
         if curl -f -s "http://localhost/health" > /dev/null 2>&1; then
@@ -95,29 +100,29 @@ health_check() {
         echo -n "."
         sleep 1
     done
-    
+
     echo
     log_error "Health check failed"
-    docker-compose ps
-    docker-compose logs --tail=10
+    docker compose ps
+    docker compose logs --tail=10
     exit 1
 }
 
 show_deployment_info() {
     log_success "Deployment completed!"
     echo
-    docker-compose ps
+    docker compose ps
     echo
     log_info "Useful commands:"
-    echo "  View logs:     docker-compose logs -f"
-    echo "  Restart:       docker-compose restart"
-    echo "  Stop:          docker-compose down"
+    echo "  View logs:     docker compose logs -f"
+    echo "  Restart:       docker compose restart"
+    echo "  Stop:          docker compose down"
 }
 
 # Main function
 main() {
     print_banner
-    
+
     echo
     read -p "Deploy to PRODUCTION? (y/N): " -n 1 -r
     echo
@@ -125,14 +130,14 @@ main() {
         log_info "Deployment cancelled"
         exit 0
     fi
-    
+
     # Simple deployment steps
     check_prerequisites
     pull_latest_changes
     build_and_deploy
     health_check
     show_deployment_info
-    
+
     log_success "🚀 Production deployment completed!"
 }
 

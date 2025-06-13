@@ -106,7 +106,7 @@ docker compose down --rmi local -v
 ├── test/             # Integration tests and Docker setup
 ├── docs/             # Documentation (auth workflow, etc.)
 ├── deployment/       # Production deployment configurations
-└── docker-compose.yml
+└── docker compose.yml
 ```
 
 ## 🏢 Multi-Tenant Architecture

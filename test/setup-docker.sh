@@ -47,7 +47,7 @@ check_docker() {
 cleanup() {
     print_status "Cleaning up Docker services..."
     cd "$(dirname "$0")/.."
-    docker-compose down --volumes >/dev/null 2>&1 || true
+    docker compose down --volumes >/dev/null 2>&1 || true
     print_success "Cleanup complete"
 }
 
@@ -68,7 +68,7 @@ main() {
         exit 1
     fi
     
-    if ! command_exists docker-compose; then
+    if ! command_exists docker compose; then
         print_error "Docker Compose is not installed"
         echo "Please install Docker Compose first:"
         echo "  https://docs.docker.com/compose/install/"
@@ -116,14 +116,14 @@ main() {
     
     # Stop any existing containers
     print_status "Stopping any existing containers..."
-    docker-compose down --volumes >/dev/null 2>&1 || true
+    docker compose down --volumes >/dev/null 2>&1 || true
     
     # Start Docker Compose services (database only for tests)
     print_status "Starting Docker Compose database service..."
     
-    if ! docker-compose up -d db; then
+    if ! docker compose up -d db; then
         print_error "Failed to start database service"
-        docker-compose logs db
+        docker compose logs db
         exit 1
     fi
     
@@ -134,7 +134,7 @@ main() {
     counter=0
     
     while [ $counter -lt $timeout ]; do
-        if docker-compose exec -T db pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1; then
+        if docker compose exec -T db pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1; then
             print_success "Database is ready and accepting connections"
             break
         fi
@@ -147,18 +147,18 @@ main() {
     if [ $counter -ge $timeout ]; then
         print_error "Database failed to start within $timeout seconds"
         echo "Docker logs:"
-        docker-compose logs db
+        docker compose logs db
         cleanup
         exit 1
     fi
     
     # Test database connection
     print_status "Testing database connection..."
-    if docker-compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT 1;" >/dev/null 2>&1; then
+    if docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT 1;" >/dev/null 2>&1; then
         print_success "Database connection test successful"
     else
         print_error "Database connection test failed"
-        docker-compose logs db
+        docker compose logs db
         cleanup
         exit 1
     fi
@@ -224,7 +224,7 @@ main() {
     print_success "Docker-based test environment setup complete!"
     echo ""
     print_status "Database is running on localhost:5432"
-    print_status "Container name: $(docker-compose ps -q db)"
+    print_status "Container name: $(docker compose ps -q db)"
     echo ""
     print_status "You can now run tests with:"
     echo "  make test-integration"
@@ -232,7 +232,7 @@ main() {
     echo "  ./test/run-docker.sh"
     echo ""
     print_status "To stop the database when done:"
-    echo "  docker-compose down"
+    echo "  docker compose down"
     echo "  make cleanup-test-env"
     echo ""
     print_warning "Note: The database will continue running until you stop it"

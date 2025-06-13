@@ -368,8 +368,8 @@ OTP_ENABLED=true go test ./test/... -v
 go test ./test/... -v -run TestSpecificTest
 
 # Check Docker service status
-docker-compose ps
-docker-compose logs db
+docker compose ps
+docker compose logs db
 ```
 
 ## Test Data Management
@@ -478,13 +478,13 @@ docker-compose logs db
 **Problem:** "Database failed to start"
 ```bash
 # Diagnosis:
-docker-compose logs db
-docker-compose ps
+docker compose logs db
+docker compose ps
 
 # Solutions:
 1. Check port 5432 availability: lsof -i :5432
 2. Verify .env file exists and is valid
-3. Clean volumes: docker-compose down --volumes
+3. Clean volumes: docker compose down --volumes
 4. Restart Docker daemon
 ```
 

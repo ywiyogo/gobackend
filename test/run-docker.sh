@@ -214,7 +214,7 @@ main() {
     if [ "$setup_only" = true ]; then
         print_success "Docker environment setup complete"
         print_warning "Skipping cleanup due to --setup-only flag"
-        print_status "Remember to run 'docker-compose down' or '$0 -c' when done"
+        print_status "Remember to run 'docker compose down' or '$0 -c' when done"
         trap - EXIT INT TERM  # Remove cleanup trap
         exit 0
     fi
@@ -251,7 +251,7 @@ main() {
             echo ""
             print_warning "Docker services are still running"
             print_status "To stop them, run: $0 -c"
-            print_status "Or: docker-compose down"
+            print_status "Or: docker compose down"
             trap - EXIT INT TERM  # Remove cleanup trap
         fi
     else

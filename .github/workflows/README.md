@@ -79,7 +79,7 @@ Your VPS server must have:
 ```bash
 # On your VPS
 sudo apt update
-sudo apt install -y git docker.io docker-compose
+sudo apt install -y git docker.io docker compose
 
 # Clone your repository
 cd /opt
@@ -108,7 +108,7 @@ You can also trigger deployment manually:
 
 - **View logs**: Check the Actions tab for deployment logs
 - **Health checks**: The workflow automatically verifies deployment
-- **Server logs**: SSH to your VPS and check `docker-compose logs -f`
+- **Server logs**: SSH to your VPS and check `docker compose logs -f`
 
 ## 🛠️ Troubleshooting
 
@@ -125,7 +125,7 @@ You can also trigger deployment manually:
 - Verify `.env` file is properly configured
 
 **Health Check Failed:**
-- Check application logs: `docker-compose logs backend`
+- Check application logs: `docker compose logs backend`
 - Verify Caddy configuration and domain setup
 - Ensure all required environment variables are set
 
@@ -140,10 +140,10 @@ cd /opt/gobackend/deployment/production
 ./deploy.sh
 
 # Check container status
-docker-compose ps
+docker compose ps
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 ```
 
 ## 🔒 Security Notes
