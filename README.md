@@ -105,7 +105,7 @@ docker compose down --rmi local -v
 │   └── notes/        # Notes management features
 ├── test/             # Integration tests and Docker setup
 ├── docs/             # Documentation (auth workflow, etc.)
-├── config/           # Tenant configuration files
+├── deployment/       # Production deployment configurations
 └── docker-compose.yml
 ```
 
@@ -115,7 +115,7 @@ The application supports complete tenant isolation:
 
 - **Domain-based Resolution**: Each tenant is identified by their domain via `Origin` header
 - **Data Isolation**: All user data is scoped to the tenant context
-- **Configuration Management**: YAML-based tenant configuration with auto-sync
+- **Dynamic Management**: Runtime tenant creation and management via admin API
 
 ### Tenant Headers
 All requests must include:
@@ -123,13 +123,33 @@ All requests must include:
 Origin: your-tenant-domain.com
 ```
 
-### Tenant Configuration
-Configure tenants in `config/tenants.yaml`:
-```yaml
-tenants:
-  - name: "Example Tenant"
-    domain: "example.com"
-    is_active: true
+### Tenant Management
+Tenants are managed dynamically through admin API endpoints:
+
+```bash
+# Create a new tenant
+curl -X POST http://localhost:8080/admin/tenants \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Example Tenant",
+    "domain": "example.com",
+    "is_active": true,
+    "settings": {
+      "otp_enabled": true,
+      "session_timeout_minutes": 720
+    }
+  }'
+
+# List all tenants
+curl -X GET http://localhost:8080/admin/tenants
+
+# Update a tenant
+curl -X PUT http://localhost:8080/admin/tenants/{id} \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Updated Tenant Name"}'
+
+# Delete a tenant
+curl -X DELETE http://localhost:8080/admin/tenants/{id}
 ```
 
 ## 🔐 Authentication Modes
