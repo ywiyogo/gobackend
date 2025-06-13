@@ -11,8 +11,6 @@ services:
     # Removed port binding - database only accessible internally
     # ports:
     #   - "${DB_PORT}:${DB_PORT}"
-    networks:
-      - gobackend-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
       interval: 10s
@@ -29,8 +27,6 @@ services:
       - .env
     volumes:
       - ../../internal/db/migrations:/migrations
-    networks:
-      - gobackend-network
     command:
       [
         "-path",
@@ -50,8 +46,6 @@ services:
       - .env
     volumes:
       - ../../internal/db/migrations:/migrations
-    networks:
-      - gobackend-network
     command:
       [
         "-path",
@@ -76,10 +70,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
-    networks:
-      - gobackend-network
-    expose:
-      - "8080"
+    ports:
+      - "${BACKEND_PORT:-8090}:8080"
 
   # caddy:
   #   image: caddy:2-alpine
@@ -92,8 +84,6 @@ services:
   #     - ./Caddyfile:/etc/caddy/Caddyfile
   #     - gobackend-caddy-data:/data
   #     - gobackend-caddy-config:/config
-  #   networks:
-  #     - gobackend-network
   #   depends_on:
   #     - backend
 
@@ -101,7 +91,3 @@ volumes:
   gobackend-pgdata:
   # gobackend-caddy-data:
   # gobackend-caddy-config:
-
-networks:
-  gobackend-network:
-    driver: bridge
