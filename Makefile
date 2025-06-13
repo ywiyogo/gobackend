@@ -2,7 +2,7 @@
 
 build:
 	@go mod tidy
-	@sqlc generate
+	# @sqlc generate
 	@mkdir -p tmp
 	@go build -o tmp/main main.go
 
