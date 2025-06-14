@@ -3,6 +3,12 @@ FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
+# Build arguments for Go compilation
+ARG CGO_ENABLED=0
+ARG GOOS=linux
+ARG GOARCH=amd64
+ARG GOAMD64=v3
+
 # Install build dependencies
 RUN apk add --no-cache make git
 
@@ -14,7 +20,7 @@ RUN go mod download
 COPY . .
 
 # Build the application
-RUN make build
+RUN CGO_ENABLED=${CGO_ENABLED} GOOS=${GOOS} GOARCH=${GOARCH} GOAMD64=${GOAMD64} make build-prod
 
 # Production stage
 FROM alpine:latest
@@ -29,7 +35,7 @@ RUN addgroup -g 1001 -S appgroup && \
 WORKDIR /app
 
 # Copy the binary from builder stage
-COPY --from=builder /app/tmp/main .
+COPY --from=builder /app/tmp/gobackend .
 
 # Change ownership to non-root user
 RUN chown -R appuser:appgroup /app
@@ -43,4 +49,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
-CMD ["./main"]
+CMD ["./gobackend"]

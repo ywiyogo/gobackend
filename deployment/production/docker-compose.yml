@@ -59,9 +59,7 @@ services:
       - emergency
 
   backend:
-    build:
-      context: ../..
-      dockerfile: deployment/production/Dockerfile
+    image: ${DOCKER_IMAGE}
     restart: unless-stopped
     env_file:
       - .env

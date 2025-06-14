@@ -74,8 +74,8 @@ pull_latest_changes() {
     log_success "Code updated"
 }
 
-build_and_deploy() {
-    log_info "Building and deploying..."
+pull_and_deploy() {
+    log_info "Pulling and deploying..."
 
     # Ensure we're in the right directory for docker compose
     cd "$SCRIPT_DIR"
@@ -83,8 +83,8 @@ build_and_deploy() {
     # Stop existing containers
     docker compose down || true
 
-    # Build and start
-    docker compose build --no-cache backend
+    # Pull latest image and start
+    docker compose pull backend
     docker compose up -d
 
     log_success "Services started"
@@ -137,7 +137,7 @@ main() {
     # Simple deployment steps
     check_prerequisites
     pull_latest_changes
-    build_and_deploy
+    pull_and_deploy
     health_check
     show_deployment_info
 
