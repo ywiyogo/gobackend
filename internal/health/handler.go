@@ -45,21 +45,28 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 		checks["database"] = "healthy"
 	}
 
-	// Check if basic tenant exists (localhost)
+	// Check if tenants table has data
 	if overallStatus == "healthy" {
-		_, err := h.tenantService.GetTenantByDomain("http://localhost")
+		hasTenants, err := h.tenantService.HasTenants()
 		if err != nil {
-			checks["default_tenant"] = "unhealthy"
+			checks["tenants_table"] = "unhealthy"
 			overallStatus = "degraded"
 			if message == "" {
-				message = "Default tenant not found. Please ensure database migrations have been run."
+				message = "Failed to check tenants table. Please ensure database migrations have been run."
 			}
-			log.Warn().Err(err).Msg("Health check: Default tenant not found")
+			log.Warn().Err(err).Msg("Health check: Failed to check tenants table")
+		} else if !hasTenants {
+			checks["tenants_table"] = "empty"
+			overallStatus = "degraded"
+			if message == "" {
+				message = "Tenants table is empty. Please ensure tenant data has been seeded."
+			}
+			log.Warn().Msg("Health check: Tenants table is empty")
 		} else {
-			checks["default_tenant"] = "healthy"
+			checks["tenants_table"] = "healthy"
 		}
 	} else {
-		checks["default_tenant"] = "skipped"
+		checks["tenants_table"] = "skipped"
 	}
 
 	response := HealthResponse{

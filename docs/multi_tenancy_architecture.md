@@ -208,7 +208,7 @@ type CreateTenantRequest struct {
 ### ✅ Phase 5: Integration and Testing Updates (COMPLETED)
 
 #### ✅ Step 5.1: Integration Tests (COMPLETED)
-**Implemented**: 
+**Implemented**:
 - `test/integration_otp_multi_tenants_test.go` - OTP-based multi-tenant auth tests
 - `test/integration_paswd_multi_tenants_test.go` - Password-based multi-tenant auth tests
 - `test/shared_test.go` - Updated with tenant-aware test helpers
@@ -218,89 +218,13 @@ type CreateTenantRequest struct {
 - Multi-tenant configuration support
 - Backward compatibility maintained
 
-### ⚠️ Phase 6: Migration Strategy (PENDING)
 
-#### 🔄 Step 6.1: Data Migration Script (TODO)
-**Need to Implement**: Migration script for existing single-tenant data
-- Create default tenant for existing users
-- Migrate existing users to default tenant
-- Preserve existing session data
+### Phase 6: Deployment and Monitoring
 
-#### 🔄 Step 6.2: Migration Command (TODO)
-**Need to Create**: `cmd/migrate/main.go`
-- Command-line tool for safe data migration
-- Backup and rollback capabilities
+#### Step 6.1: Docker Configuration Update
+**Update**: `docker-compose.yml`
 
-### Phase 7: Deployment and Monitoring
-
-#### Step 7.2: Docker Configuration Update
-**Update**: `docker compose.yml`
-
-```yaml
-version: '3.8'
-
-services:
-  app:
-    build: .
-    ports:
-      - "8080:8080"
-    environment:
-      - DB_HOST=db
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres2025
-      - DB_NAME=gobackend_multitenant
-      - ENABLE_MULTI_TENANT=true
-      - ENV=production
-    depends_on:
-      db:
-        condition: service_healthy
-    networks:
-      - backend
-
-  db:
-    image: postgres:16
-    environment:
-      POSTGRES_DB: gobackend_multitenant
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres2025
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./scripts:/docker-entrypoint-initdb.d
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - backend
-
-  caddy:
-    image: caddy:2-alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - app
-    networks:
-      - backend
-
-volumes:
-  postgres_data:
-  caddy_data:
-  caddy_config:
-
-networks:
-  backend:
-    driver: bridge
-```
-
-#### Step 7.3: Caddy Configuration
+#### Step 6.2: Caddy Configuration
 **Create**: `Caddyfile`
 
 ## 🧪 Testing Strategy (IMPLEMENTED)
@@ -495,7 +419,7 @@ curl -X POST http://localhost:8080/login \
 
 ### ✅ Integration Tests (IMPLEMENTED)
 - ✅ Multi-tenant authentication workflows
-- ✅ Cross-tenant session validation  
+- ✅ Cross-tenant session validation
 - ✅ CORS handling per tenant
 - ✅ Data isolation between tenants
 - ✅ Tenant settings inheritance
@@ -555,8 +479,8 @@ The multi-tenant database schema has been implemented and can be applied to exis
 
 4. **Deploy New Code**
    ```bash
-   docker compose down
-   docker compose up -d --build
+   docker-compose down
+   docker-compose up -d --build
    ```
 
 5. **Verify Migration**

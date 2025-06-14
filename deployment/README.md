@@ -7,8 +7,12 @@ Simple deployment configurations for the Go Backend application with multi-tenan
 ### Production Deployment
 
 ```bash
-# 1. Configure environment. Don't move it to the project root folder
-cp deployment/production/.env.example deployment/production/.env
+# 1. Change directory, don't start on the roof folder!
+cd deployment/production
+
+# 2. Configure environment. Don't move it to the project root folder
+
+cp .env.example .env
 # Edit .env with your production values
 
 # 2. Update domains in Caddyfile

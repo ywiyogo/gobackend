@@ -138,6 +138,24 @@ func (s *Service) CheckDatabaseConnectivity() error {
 	return nil
 }
 
+// HasTenants checks if the tenants table has any data
+func (s *Service) HasTenants() (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	tenants, err := s.repo.GetAllTenants(ctx)
+	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "HasTenants").
+			Err(err).
+			Msg("Failed to check if tenants exist")
+		return false, fmt.Errorf("failed to check tenants: %w", err)
+	}
+
+	return len(tenants) > 0, nil
+}
+
 // GetTenantSettings parses and returns tenant settings with defaults
 func (s *Service) GetTenantSettings(tenant *sqlc.Tenant) (*TenantSettings, error) {
 	return GetTenantSettings(tenant)
