@@ -2,9 +2,13 @@
 
 build:
 	@go mod tidy
-	# @sqlc generate
 	@mkdir -p tmp
 	@go build -o tmp/main main.go
+
+build-prod:
+	@go mod tidy
+	@mkdir -p tmp
+	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v3 go build -o tmp/gobackend main.go
 
 run:
 	@./tmp/main
