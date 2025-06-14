@@ -101,7 +101,7 @@ func (r *UserRepo) ValidateOTP(ctx context.Context, userID uuid.UUID, otp string
 
 	// Convert pgtype.Text to string
 	var storedOTP string
-	if err := otpRecord.OtpCode.Scan(&storedOTP); err != nil {
+	if err := otpRecord.Otp.Scan(&storedOTP); err != nil {
 		return false, fmt.Errorf("failed to read OTP code: %w", err)
 	}
 
@@ -140,7 +140,7 @@ func (r *UserRepo) GetUserByEmailAndTenant(ctx context.Context, email string, te
 		TenantID:     userRow.TenantID,
 		Email:        userRow.Email,
 		PasswordHash: userRow.PasswordHash,
-		OtpCode:      userRow.OtpCode,
+		Otp:          userRow.Otp,
 		OtpExpiresAt: userRow.OtpExpiresAt,
 		CreatedAt:    userRow.CreatedAt,
 		UpdatedAt:    userRow.UpdatedAt,
@@ -174,7 +174,7 @@ func (r *UserRepo) GetUserByIDAndTenant(ctx context.Context, userID, tenantID uu
 		TenantID:     userRow.TenantID,
 		Email:        userRow.Email,
 		PasswordHash: userRow.PasswordHash,
-		OtpCode:      userRow.OtpCode,
+		Otp:          userRow.Otp,
 		OtpExpiresAt: userRow.OtpExpiresAt,
 		CreatedAt:    userRow.CreatedAt,
 		UpdatedAt:    userRow.UpdatedAt,
@@ -207,7 +207,7 @@ func (r *UserRepo) CreateUserInTenant(ctx context.Context, user *sqlc.User) erro
 		createdUser, err := r.queries.CreateUserWithOtpInTenant(ctx, sqlc.CreateUserWithOtpInTenantParams{
 			TenantID:     user.TenantID,
 			Email:        user.Email,
-			OtpCode:      user.OtpCode,
+			Otp:          user.Otp,
 			OtpExpiresAt: user.OtpExpiresAt,
 		})
 		if err != nil {
@@ -310,7 +310,7 @@ func (r *UserRepo) SetUserOTPInTenant(ctx context.Context, userID, tenantID uuid
 	err := r.queries.SetUserOTPInTenant(ctx, sqlc.SetUserOTPInTenantParams{
 		ID:           userID,
 		TenantID:     pgtype.UUID{Bytes: tenantID, Valid: true},
-		OtpCode:      pgtype.Text{String: otpCode, Valid: true},
+		Otp:          pgtype.Text{String: otpCode, Valid: true},
 		OtpExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true},
 	})
 	if err != nil {
@@ -346,7 +346,7 @@ func (r *UserRepo) GetUserOTPInTenant(ctx context.Context, userID, tenantID uuid
 		return "", time.Time{}, fmt.Errorf("failed to get OTP in tenant: %w", err)
 	}
 
-	return otpRow.OtpCode.String, otpRow.OtpExpiresAt.Time, nil
+	return otpRow.Otp.String, otpRow.OtpExpiresAt.Time, nil
 }
 
 // ClearUserOTPInTenant clears OTP for a user within a specific tenant
@@ -370,16 +370,70 @@ func (r *UserRepo) ClearUserOTPInTenant(ctx context.Context, userID, tenantID uu
 
 // ValidateOTPInTenant validates OTP for a user within a specific tenant
 func (r *UserRepo) ValidateOTPInTenant(ctx context.Context, userID, tenantID uuid.UUID, otp string) (bool, error) {
+	log.Debug().
+		Str("pkg", pkgName).
+		Str("method", "ValidateOTPInTenant").
+		Str("user_id", userID.String()).
+		Str("tenant_id", tenantID.String()).
+		Str("submitted_otp", otp).
+		Msg("Starting OTP validation")
+
 	otpCode, expiresAt, err := r.GetUserOTPInTenant(ctx, userID, tenantID)
 	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "ValidateOTPInTenant").
+			Str("user_id", userID.String()).
+			Str("tenant_id", tenantID.String()).
+			Err(err).
+			Msg("Failed to get OTP from database")
 		return false, err
 	}
 
-	if otpCode == "" || time.Now().After(expiresAt) {
+	log.Debug().
+		Str("pkg", pkgName).
+		Str("method", "ValidateOTPInTenant").
+		Str("user_id", userID.String()).
+		Str("tenant_id", tenantID.String()).
+		Str("stored_otp", otpCode).
+		Str("submitted_otp", otp).
+		Time("expires_at", expiresAt).
+		Bool("is_expired", time.Now().After(expiresAt)).
+		Msg("Retrieved OTP from database")
+
+	if otpCode == "" {
+		log.Warn().
+			Str("pkg", pkgName).
+			Str("method", "ValidateOTPInTenant").
+			Str("user_id", userID.String()).
+			Str("tenant_id", tenantID.String()).
+			Msg("No OTP found for user in tenant")
 		return false, nil
 	}
 
-	return otpCode == otp, nil
+	if time.Now().After(expiresAt) {
+		log.Warn().
+			Str("pkg", pkgName).
+			Str("method", "ValidateOTPInTenant").
+			Str("user_id", userID.String()).
+			Str("tenant_id", tenantID.String()).
+			Time("expires_at", expiresAt).
+			Msg("OTP has expired")
+		return false, nil
+	}
+
+	isMatch := otpCode == otp
+	log.Debug().
+		Str("pkg", pkgName).
+		Str("method", "ValidateOTPInTenant").
+		Str("user_id", userID.String()).
+		Str("tenant_id", tenantID.String()).
+		Str("stored_otp", otpCode).
+		Str("submitted_otp", otp).
+		Bool("is_match", isMatch).
+		Msg("OTP comparison result")
+
+	return isMatch, nil
 }
 
 // DeleteSessionByIDAndTenant deletes a session by ID within a specific tenant
@@ -520,7 +574,7 @@ func (r *UserRepo) GetUserByEmail(email string) (*sqlc.User, error) {
 		ID:           dbUser.ID,
 		Email:        dbUser.Email,
 		PasswordHash: dbUser.PasswordHash,
-		OtpCode:      dbUser.OtpCode,
+		Otp:          dbUser.Otp,
 		OtpExpiresAt: dbUser.OtpExpiresAt,
 		CreatedAt:    dbUser.CreatedAt,
 		UpdatedAt:    dbUser.UpdatedAt,
@@ -678,7 +732,7 @@ func (r *UserRepo) UserExistsByEmail(ctx context.Context, email string) (bool, e
 func (r *UserRepo) CreateUserWithOtp(user *sqlc.User) error {
 	_, err := r.queries.CreateUserWithOtp(context.Background(), sqlc.CreateUserWithOtpParams{
 		Email:        user.Email,
-		OtpCode:      pgtype.Text{String: user.OtpCode.String, Valid: user.OtpCode.String != ""},
+		Otp:          pgtype.Text{String: user.Otp.String, Valid: user.Otp.String != ""},
 		OtpExpiresAt: pgtype.Timestamptz{Time: user.OtpExpiresAt.Time, Valid: !user.OtpExpiresAt.Time.IsZero()},
 	})
 	if err != nil {
@@ -695,7 +749,7 @@ func (r *UserRepo) CreateUserWithOtp(user *sqlc.User) error {
 
 func (r *UserRepo) SetUserOTP(ctx context.Context, userID uuid.UUID, otpCode string, expiresAt time.Time) error {
 	err := r.queries.SetUserOTP(ctx, sqlc.SetUserOTPParams{
-		OtpCode: pgtype.Text{
+		Otp: pgtype.Text{
 			String: otpCode,
 			Valid:  otpCode != "",
 		},
@@ -720,7 +774,7 @@ func (r *UserRepo) GetUserOTP(ctx context.Context, userID uuid.UUID) (string, ti
 		return "", time.Time{}, fmt.Errorf("failed to get OTP: %w", err)
 	}
 
-	return otpData.OtpCode.String, otpData.OtpExpiresAt.Time, nil
+	return otpData.Otp.String, otpData.OtpExpiresAt.Time, nil
 }
 
 func (r *UserRepo) ClearUserOTP(ctx context.Context, userID uuid.UUID) error {

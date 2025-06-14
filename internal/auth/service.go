@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/rs/zerolog/log"
 )
 
 var ErrAuth = errors.New("unauthorized access")
@@ -102,14 +103,14 @@ func (s *Service) RegisterWithOTPInTenant(ctx context.Context, email string, ten
 
 	// Generate OTP
 	otpCode := utils.GenerateOTP(6)
-	otpExpiry := time.Now().Add(5 * time.Minute)
+	otpExpiry := time.Now().Add(15 * time.Minute)
 
 	// Create user with OTP
 	user := &sqlc.User{
 		ID:           uuid.New(),
 		TenantID:     pgtype.UUID{Bytes: tenantID, Valid: true},
 		Email:        email,
-		OtpCode:      pgtype.Text{String: otpCode, Valid: true},
+		Otp:          pgtype.Text{String: otpCode, Valid: true},
 		OtpExpiresAt: pgtype.Timestamptz{Time: otpExpiry, Valid: true},
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
@@ -162,7 +163,7 @@ func (s *Service) LoginWithOTPInTenant(ctx context.Context, email string, tenant
 
 	// Generate new OTP
 	otpCode := utils.GenerateOTP(6)
-	otpExpiry := time.Now().Add(5 * time.Minute)
+	otpExpiry := time.Now().Add(15 * time.Minute)
 
 	// Set OTP for user
 	if err := s.repo.SetUserOTPInTenant(ctx, user.ID, uuid.UUID(user.TenantID.Bytes), otpCode, otpExpiry); err != nil {
@@ -170,7 +171,7 @@ func (s *Service) LoginWithOTPInTenant(ctx context.Context, email string, tenant
 	}
 
 	// Update user model
-	user.OtpCode = pgtype.Text{String: otpCode, Valid: true}
+	user.Otp = pgtype.Text{String: otpCode, Valid: true}
 	user.OtpExpiresAt = pgtype.Timestamptz{Time: otpExpiry, Valid: true}
 
 	// Send OTP email
@@ -233,20 +234,64 @@ func (s *Service) ValidateSessionInTenant(ctx context.Context, sessionToken stri
 
 // VerifyOTPInTenant verifies OTP and updates session in a specific tenant
 func (s *Service) VerifyOTPInTenant(ctx context.Context, sessionToken, otpCode string, tenantID uuid.UUID) (*sqlc.Session, error) {
+	log.Debug().
+		Str("pkg", pkgName).
+		Str("method", "VerifyOTPInTenant").
+		Str("session_token", sessionToken[:8]+"...").
+		Str("otp", otpCode).
+		Str("tenant_id", tenantID.String()).
+		Msg("Starting OTP verification")
+
 	// Get current session
 	session, err := s.ValidateSessionInTenant(ctx, sessionToken, tenantID)
 	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "VerifyOTPInTenant").
+			Str("session_token", sessionToken[:8]+"...").
+			Str("tenant_id", tenantID.String()).
+			Err(err).
+			Msg("Session validation failed")
 		return nil, err
 	}
+
+	log.Debug().
+		Str("pkg", pkgName).
+		Str("method", "VerifyOTPInTenant").
+		Str("user_id", session.UserID.String()).
+		Str("tenant_id", tenantID.String()).
+		Msg("Session validated, checking OTP")
 
 	// Validate OTP
 	isValid, err := s.repo.ValidateOTPInTenant(ctx, session.UserID, tenantID, otpCode)
 	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "VerifyOTPInTenant").
+			Str("user_id", session.UserID.String()).
+			Str("tenant_id", tenantID.String()).
+			Str("otp", otpCode).
+			Err(err).
+			Msg("OTP validation error")
 		return nil, fmt.Errorf("error validating OTP: %w", err)
 	}
 	if !isValid {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "VerifyOTPInTenant").
+			Str("user_id", session.UserID.String()).
+			Str("tenant_id", tenantID.String()).
+			Str("otp", otpCode).
+			Msg("OTP validation failed - codes do not match")
 		return nil, fmt.Errorf("invalid OTP code")
 	}
+
+	log.Info().
+		Str("pkg", pkgName).
+		Str("method", "VerifyOTPInTenant").
+		Str("user_id", session.UserID.String()).
+		Str("tenant_id", tenantID.String()).
+		Msg("OTP verification successful")
 
 	// Clear OTP after successful verification
 	_ = s.repo.ClearUserOTPInTenant(ctx, session.UserID, tenantID)
@@ -305,7 +350,7 @@ func (s *Service) GetUserSessionsInTenant(ctx context.Context, userID, tenantID 
 // RequestOTPInTenant generates and sets OTP for a user in a specific tenant
 func (s *Service) RequestOTPInTenant(ctx context.Context, userID, tenantID uuid.UUID) (string, error) {
 	otpCode := utils.GenerateOTP(6)
-	expiresAt := time.Now().Add(5 * time.Minute)
+	expiresAt := time.Now().Add(15 * time.Minute)
 
 	err := s.repo.SetUserOTPInTenant(ctx, userID, tenantID, otpCode, expiresAt)
 	if err != nil {
@@ -563,7 +608,7 @@ func (s *Service) ClearOTP(ctx context.Context, userID uuid.UUID) error {
 func (s *Service) GenerateAndStoreOTP(r *http.Request) string {
 	email := r.FormValue("email")
 	otpCode := utils.GenerateOTP(6)
-	otpExpiresAt := time.Now().Add(5 * time.Minute)
+	otpExpiresAt := time.Now().Add(15 * time.Minute)
 	// Check if email already exists
 	existingUser, err := s.repo.GetUserByEmail(email)
 	if err != nil {
@@ -574,7 +619,7 @@ func (s *Service) GenerateAndStoreOTP(r *http.Request) string {
 	if existingUser == nil {
 		existingUser := &sqlc.User{
 			Email: email,
-			OtpCode: pgtype.Text{
+			Otp: pgtype.Text{
 				String: otpCode,
 				Valid:  true,
 			},

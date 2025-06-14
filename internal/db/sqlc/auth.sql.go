@@ -15,7 +15,7 @@ import (
 
 const clearUserOTP = `-- name: ClearUserOTP :exec
 UPDATE users
-SET otp_code = NULL,
+SET otp = NULL,
     otp_expires_at = NULL,
     updated_at = NOW()
 WHERE id = $1
@@ -28,7 +28,7 @@ func (q *Queries) ClearUserOTP(ctx context.Context, id uuid.UUID) error {
 
 const clearUserOTPInTenant = `-- name: ClearUserOTPInTenant :exec
 UPDATE users
-SET otp_code = NULL,
+SET otp = NULL,
     otp_expires_at = NULL,
     updated_at = NOW()
 WHERE tenant_id = $1 AND id = $2
@@ -190,25 +190,25 @@ func (q *Queries) CreateTenant(ctx context.Context, arg CreateTenantParams) (Ten
 }
 
 const createUserWithOtp = `-- name: CreateUserWithOtp :one
-INSERT INTO users (id, email, otp_code, otp_expires_at, created_at, updated_at)
+INSERT INTO users (id, email, otp, otp_expires_at, created_at, updated_at)
 VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW())
-RETURNING id, email, password_hash, otp_code, otp_expires_at, created_at, updated_at, tenant_id
+RETURNING id, email, password_hash, otp, otp_expires_at, created_at, updated_at, tenant_id
 `
 
 type CreateUserWithOtpParams struct {
 	Email        string             `json:"email"`
-	OtpCode      pgtype.Text        `json:"otp_code"`
+	Otp          pgtype.Text        `json:"otp"`
 	OtpExpiresAt pgtype.Timestamptz `json:"otp_expires_at"`
 }
 
 func (q *Queries) CreateUserWithOtp(ctx context.Context, arg CreateUserWithOtpParams) (User, error) {
-	row := q.db.QueryRow(ctx, createUserWithOtp, arg.Email, arg.OtpCode, arg.OtpExpiresAt)
+	row := q.db.QueryRow(ctx, createUserWithOtp, arg.Email, arg.Otp, arg.OtpExpiresAt)
 	var i User
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
 		&i.PasswordHash,
-		&i.OtpCode,
+		&i.Otp,
 		&i.OtpExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -218,15 +218,15 @@ func (q *Queries) CreateUserWithOtp(ctx context.Context, arg CreateUserWithOtpPa
 }
 
 const createUserWithOtpInTenant = `-- name: CreateUserWithOtpInTenant :one
-INSERT INTO users (id, tenant_id, email, otp_code, otp_expires_at, created_at, updated_at)
+INSERT INTO users (id, tenant_id, email, otp, otp_expires_at, created_at, updated_at)
 VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW(), NOW())
-RETURNING id, email, password_hash, otp_code, otp_expires_at, created_at, updated_at, tenant_id
+RETURNING id, email, password_hash, otp, otp_expires_at, created_at, updated_at, tenant_id
 `
 
 type CreateUserWithOtpInTenantParams struct {
 	TenantID     pgtype.UUID        `json:"tenant_id"`
 	Email        string             `json:"email"`
-	OtpCode      pgtype.Text        `json:"otp_code"`
+	Otp          pgtype.Text        `json:"otp"`
 	OtpExpiresAt pgtype.Timestamptz `json:"otp_expires_at"`
 }
 
@@ -234,7 +234,7 @@ func (q *Queries) CreateUserWithOtpInTenant(ctx context.Context, arg CreateUserW
 	row := q.db.QueryRow(ctx, createUserWithOtpInTenant,
 		arg.TenantID,
 		arg.Email,
-		arg.OtpCode,
+		arg.Otp,
 		arg.OtpExpiresAt,
 	)
 	var i User
@@ -242,7 +242,7 @@ func (q *Queries) CreateUserWithOtpInTenant(ctx context.Context, arg CreateUserW
 		&i.ID,
 		&i.Email,
 		&i.PasswordHash,
-		&i.OtpCode,
+		&i.Otp,
 		&i.OtpExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -254,7 +254,7 @@ func (q *Queries) CreateUserWithOtpInTenant(ctx context.Context, arg CreateUserW
 const createUserWithPassword = `-- name: CreateUserWithPassword :one
 INSERT INTO users (id, email, password_hash, created_at, updated_at)
 VALUES (gen_random_uuid(), $1, $2, NOW(), NOW())
-RETURNING id, email, password_hash, otp_code, otp_expires_at, created_at, updated_at, tenant_id
+RETURNING id, email, password_hash, otp, otp_expires_at, created_at, updated_at, tenant_id
 `
 
 type CreateUserWithPasswordParams struct {
@@ -269,7 +269,7 @@ func (q *Queries) CreateUserWithPassword(ctx context.Context, arg CreateUserWith
 		&i.ID,
 		&i.Email,
 		&i.PasswordHash,
-		&i.OtpCode,
+		&i.Otp,
 		&i.OtpExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -281,7 +281,7 @@ func (q *Queries) CreateUserWithPassword(ctx context.Context, arg CreateUserWith
 const createUserWithPasswordInTenant = `-- name: CreateUserWithPasswordInTenant :one
 INSERT INTO users (id, tenant_id, email, password_hash, created_at, updated_at)
 VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW())
-RETURNING id, email, password_hash, otp_code, otp_expires_at, created_at, updated_at, tenant_id
+RETURNING id, email, password_hash, otp, otp_expires_at, created_at, updated_at, tenant_id
 `
 
 type CreateUserWithPasswordInTenantParams struct {
@@ -297,7 +297,7 @@ func (q *Queries) CreateUserWithPasswordInTenant(ctx context.Context, arg Create
 		&i.ID,
 		&i.Email,
 		&i.PasswordHash,
-		&i.OtpCode,
+		&i.Otp,
 		&i.OtpExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -455,7 +455,7 @@ func (q *Queries) GetCsrfTokenBySessionTokenAndTenant(ctx context.Context, arg G
 
 const getSessionByTokenAndTenant = `-- name: GetSessionByTokenAndTenant :one
 SELECT id, tenant_id, user_id, session_token, csrf_token, user_agent, ip, expires_at, created_at
-FROM sessions 
+FROM sessions
 WHERE tenant_id = $1 AND session_token = $2 AND expires_at > NOW()
 LIMIT 1
 `
@@ -607,7 +607,7 @@ func (q *Queries) GetSessionsByUserIDAndTenant(ctx context.Context, arg GetSessi
 
 const getTenantByAPIKey = `-- name: GetTenantByAPIKey :one
 SELECT id, name, domain, subdomain, api_key, settings, is_active, created_at, updated_at
-FROM tenants 
+FROM tenants
 WHERE api_key = $1 AND is_active = true
 LIMIT 1
 `
@@ -632,7 +632,7 @@ func (q *Queries) GetTenantByAPIKey(ctx context.Context, apiKey string) (Tenant,
 const getTenantByDomain = `-- name: GetTenantByDomain :one
 
 SELECT id, name, domain, subdomain, api_key, settings, is_active, created_at, updated_at
-FROM tenants 
+FROM tenants
 WHERE domain = $1 AND is_active = true
 LIMIT 1
 `
@@ -657,7 +657,7 @@ func (q *Queries) GetTenantByDomain(ctx context.Context, domain string) (Tenant,
 
 const getTenantByID = `-- name: GetTenantByID :one
 SELECT id, name, domain, subdomain, api_key, settings, is_active, created_at, updated_at
-FROM tenants 
+FROM tenants
 WHERE id = $1
 LIMIT 1
 `
@@ -680,7 +680,7 @@ func (q *Queries) GetTenantByID(ctx context.Context, id uuid.UUID) (Tenant, erro
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password_hash, otp_code, otp_expires_at, created_at, updated_at, tenant_id FROM users
+SELECT id, email, password_hash, otp, otp_expires_at, created_at, updated_at, tenant_id FROM users
 WHERE email = $1 LIMIT 1
 `
 
@@ -691,7 +691,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.ID,
 		&i.Email,
 		&i.PasswordHash,
-		&i.OtpCode,
+		&i.Otp,
 		&i.OtpExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -702,9 +702,9 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 
 const getUserByEmailAndTenant = `-- name: GetUserByEmailAndTenant :one
 
-SELECT id, tenant_id, email, password_hash, otp_code, otp_expires_at, created_at, updated_at
-FROM users 
-WHERE tenant_id = $1 AND email = $2 
+SELECT id, tenant_id, email, password_hash, otp, otp_expires_at, created_at, updated_at
+FROM users
+WHERE tenant_id = $1 AND email = $2
 LIMIT 1
 `
 
@@ -718,7 +718,7 @@ type GetUserByEmailAndTenantRow struct {
 	TenantID     pgtype.UUID        `json:"tenant_id"`
 	Email        string             `json:"email"`
 	PasswordHash pgtype.Text        `json:"password_hash"`
-	OtpCode      pgtype.Text        `json:"otp_code"`
+	Otp          pgtype.Text        `json:"otp"`
 	OtpExpiresAt pgtype.Timestamptz `json:"otp_expires_at"`
 	CreatedAt    time.Time          `json:"created_at"`
 	UpdatedAt    time.Time          `json:"updated_at"`
@@ -733,7 +733,7 @@ func (q *Queries) GetUserByEmailAndTenant(ctx context.Context, arg GetUserByEmai
 		&i.TenantID,
 		&i.Email,
 		&i.PasswordHash,
-		&i.OtpCode,
+		&i.Otp,
 		&i.OtpExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -742,9 +742,9 @@ func (q *Queries) GetUserByEmailAndTenant(ctx context.Context, arg GetUserByEmai
 }
 
 const getUserByIDAndTenant = `-- name: GetUserByIDAndTenant :one
-SELECT id, tenant_id, email, password_hash, otp_code, otp_expires_at, created_at, updated_at
-FROM users 
-WHERE tenant_id = $1 AND id = $2 
+SELECT id, tenant_id, email, password_hash, otp, otp_expires_at, created_at, updated_at
+FROM users
+WHERE tenant_id = $1 AND id = $2
 LIMIT 1
 `
 
@@ -758,7 +758,7 @@ type GetUserByIDAndTenantRow struct {
 	TenantID     pgtype.UUID        `json:"tenant_id"`
 	Email        string             `json:"email"`
 	PasswordHash pgtype.Text        `json:"password_hash"`
-	OtpCode      pgtype.Text        `json:"otp_code"`
+	Otp          pgtype.Text        `json:"otp"`
 	OtpExpiresAt pgtype.Timestamptz `json:"otp_expires_at"`
 	CreatedAt    time.Time          `json:"created_at"`
 	UpdatedAt    time.Time          `json:"updated_at"`
@@ -772,7 +772,7 @@ func (q *Queries) GetUserByIDAndTenant(ctx context.Context, arg GetUserByIDAndTe
 		&i.TenantID,
 		&i.Email,
 		&i.PasswordHash,
-		&i.OtpCode,
+		&i.Otp,
 		&i.OtpExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -794,31 +794,30 @@ func (q *Queries) GetUserIDBySessionToken(ctx context.Context, sessionToken stri
 }
 
 const getUserOTP = `-- name: GetUserOTP :one
-SELECT otp_code, otp_expires_at
+SELECT otp, otp_expires_at
 FROM users
 WHERE id = $1
-  AND otp_code IS NOT NULL
+  AND otp IS NOT NULL
   AND otp_expires_at > NOW()
 `
 
 type GetUserOTPRow struct {
-	OtpCode      pgtype.Text        `json:"otp_code"`
+	Otp          pgtype.Text        `json:"otp"`
 	OtpExpiresAt pgtype.Timestamptz `json:"otp_expires_at"`
 }
 
 func (q *Queries) GetUserOTP(ctx context.Context, id uuid.UUID) (GetUserOTPRow, error) {
 	row := q.db.QueryRow(ctx, getUserOTP, id)
 	var i GetUserOTPRow
-	err := row.Scan(&i.OtpCode, &i.OtpExpiresAt)
+	err := row.Scan(&i.Otp, &i.OtpExpiresAt)
 	return i, err
 }
 
 const getUserOTPInTenant = `-- name: GetUserOTPInTenant :one
-SELECT otp_code, otp_expires_at
+SELECT otp, otp_expires_at
 FROM users
 WHERE tenant_id = $1 AND id = $2
-  AND otp_code IS NOT NULL
-  AND otp_expires_at > NOW()
+  AND otp IS NOT NULL
 `
 
 type GetUserOTPInTenantParams struct {
@@ -827,14 +826,14 @@ type GetUserOTPInTenantParams struct {
 }
 
 type GetUserOTPInTenantRow struct {
-	OtpCode      pgtype.Text        `json:"otp_code"`
+	Otp          pgtype.Text        `json:"otp"`
 	OtpExpiresAt pgtype.Timestamptz `json:"otp_expires_at"`
 }
 
 func (q *Queries) GetUserOTPInTenant(ctx context.Context, arg GetUserOTPInTenantParams) (GetUserOTPInTenantRow, error) {
 	row := q.db.QueryRow(ctx, getUserOTPInTenant, arg.TenantID, arg.ID)
 	var i GetUserOTPInTenantRow
-	err := row.Scan(&i.OtpCode, &i.OtpExpiresAt)
+	err := row.Scan(&i.Otp, &i.OtpExpiresAt)
 	return i, err
 }
 
@@ -878,26 +877,26 @@ func (q *Queries) ListTenants(ctx context.Context) ([]Tenant, error) {
 
 const setUserOTP = `-- name: SetUserOTP :exec
 UPDATE users
-SET otp_code = $1,
+SET otp = $1,
     otp_expires_at = $2,
     updated_at = NOW()
 WHERE id = $3
 `
 
 type SetUserOTPParams struct {
-	OtpCode      pgtype.Text        `json:"otp_code"`
+	Otp          pgtype.Text        `json:"otp"`
 	OtpExpiresAt pgtype.Timestamptz `json:"otp_expires_at"`
 	ID           uuid.UUID          `json:"id"`
 }
 
 func (q *Queries) SetUserOTP(ctx context.Context, arg SetUserOTPParams) error {
-	_, err := q.db.Exec(ctx, setUserOTP, arg.OtpCode, arg.OtpExpiresAt, arg.ID)
+	_, err := q.db.Exec(ctx, setUserOTP, arg.Otp, arg.OtpExpiresAt, arg.ID)
 	return err
 }
 
 const setUserOTPInTenant = `-- name: SetUserOTPInTenant :exec
 UPDATE users
-SET otp_code = $3,
+SET otp = $3,
     otp_expires_at = $4,
     updated_at = NOW()
 WHERE id = $1 AND tenant_id = $2
@@ -906,7 +905,7 @@ WHERE id = $1 AND tenant_id = $2
 type SetUserOTPInTenantParams struct {
 	ID           uuid.UUID          `json:"id"`
 	TenantID     pgtype.UUID        `json:"tenant_id"`
-	OtpCode      pgtype.Text        `json:"otp_code"`
+	Otp          pgtype.Text        `json:"otp"`
 	OtpExpiresAt pgtype.Timestamptz `json:"otp_expires_at"`
 }
 
@@ -914,7 +913,7 @@ func (q *Queries) SetUserOTPInTenant(ctx context.Context, arg SetUserOTPInTenant
 	_, err := q.db.Exec(ctx, setUserOTPInTenant,
 		arg.ID,
 		arg.TenantID,
-		arg.OtpCode,
+		arg.Otp,
 		arg.OtpExpiresAt,
 	)
 	return err

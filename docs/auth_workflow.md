@@ -128,7 +128,7 @@ curl -X POST http://localhost:8080/login \
 ```bash
 curl -X POST http://localhost:8080/verify-otp \
      -H "Origin: example.com" \
-     -d "otp_code=123456" \
+     -d "otp=123456" \
      -H "X-CSRF-Token: YOUR_CSRF_TOKEN" \
      -b cookies.txt
 # Response: "OTP verified successfully, new session token set in cookie. CSRF: yyy"
@@ -214,11 +214,11 @@ OTP_ENABLED=true
 
 ### Database Schema
 - `tenants` table: id, name, domain, api_key, settings, is_active
-- `users` table: id, tenant_id, email, password_hash, otp_code, otp_expires_at
+- `users` table: id, tenant_id, email, password_hash, otp, otp_expires_at
 - `sessions` table: id, tenant_id, user_id, session_token, csrf_token, user_agent, ip, expires_at
 - All tables include tenant_id for complete data isolation
 
 ### Tenant Management
-- **Configuration**: YAML-based with auto-sync on startup
+- **Configuration**: YAML-based with auto-q on startup
 - **Domain Resolution**: Tenant identified via Origin header
 - **Data Isolation**: All queries scoped to tenant context

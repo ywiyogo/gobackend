@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:latest
+    image: postgres:17
     restart: always
     environment:
       POSTGRES_USER: ${DB_USER}
@@ -26,11 +26,14 @@ services:
       - .env
     volumes:
       - ./internal/db/migrations:/migrations
-    command: [
-      "-path", "/migrations",
-      "-database", "postgres://${DB_USER}:${DB_PASSWORD}@db:${DB_PORT}/${DB_NAME}?sslmode=disable",
-      "up"
-    ]
+    command:
+      [
+        "-path",
+        "/migrations",
+        "-database",
+        "postgres://${DB_USER}:${DB_PASSWORD}@db:${DB_PORT}/${DB_NAME}?sslmode=disable",
+        "up",
+      ]
 
   migrate-down:
     image: migrate/migrate
@@ -42,16 +45,20 @@ services:
       - .env
     volumes:
       - ./internal/db/migrations:/migrations
-    command: [
-      "-path", "/migrations",
-      "-database", "postgres://${DB_USER}:${DB_PASSWORD}@db:${DB_PORT}/${DB_NAME}?sslmode=disable",
-      "down", "1"
-    ]
+    command:
+      [
+        "-path",
+        "/migrations",
+        "-database",
+        "postgres://${DB_USER}:${DB_PASSWORD}@db:${DB_PORT}/${DB_NAME}?sslmode=disable",
+        "down",
+        "1",
+      ]
     profiles:
       - tools
 
   app:
-    build: .  # assumes Dockerfile is in ./app directory
+    build: . # assumes Dockerfile is in ./app directory
     restart: always
     depends_on:
       db:
@@ -67,4 +74,3 @@ services:
 
 volumes:
   pgdata:
-

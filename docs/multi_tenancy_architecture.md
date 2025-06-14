@@ -32,45 +32,13 @@ Current Multi-Tenant Setup (Implemented):
 └── Testing: Comprehensive multi-tenant integration tests
 ```
 
-### Current Database Schema (Implemented)
+### Database Schema
 ```sql
--- Multi-tenant tables (implemented)
-tenants (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name VARCHAR(255) NOT NULL,
-    domain VARCHAR(255) UNIQUE NOT NULL,
-    subdomain VARCHAR(100),
-    api_key VARCHAR(255) UNIQUE NOT NULL,
-    settings JSONB DEFAULT '{}',
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID REFERENCES tenants(id),  -- Tenant isolation implemented
-    email VARCHAR(255) NOT NULL,
-    password_hash VARCHAR(255),
-    otp_code VARCHAR(10),
-    otp_expires_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(tenant_id, email)  -- Email unique per tenant
-);
-
-sessions (
-    id SERIAL PRIMARY KEY,
-    tenant_id UUID REFERENCES tenants(id),  -- Tenant isolation implemented
-    user_id UUID REFERENCES users(id),
-    session_token VARCHAR(255) UNIQUE NOT NULL,
-    csrf_token VARCHAR(255) NOT NULL,
-    user_agent TEXT,
-    ip VARCHAR(45),
-    expires_at TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
+tenants (id, name, domain, api_key, settings, is_active, ...)
+users (id, tenant_id, email, password_hash, otp, otp_expires_at, ...)
+sessions (id, tenant_id, user_id, session_token, csrf_token, ...)
 ```
+**Note**: `otp` field standardized from `otp_code`. Use `otp=123456` not `otp_code=123456`.
 
 ## 🏗️ Target Multi-Tenant Architecture
 
@@ -253,6 +221,8 @@ type CreateTenantRequest struct {
 
 ### Manual Testing with cURL
 
+
+
 #### Test Multi-Tenant Registration
 ```bash
 # Register user on localhost (default tenant)
@@ -282,139 +252,65 @@ curl -X POST http://localhost:8080/register \
 
 #### Test Admin API for Tenant Management
 ```bash
-# Create a new tenant
+# Create tenant with OTP enabled
 curl -X POST http://localhost:8080/admin/tenants \
      -H "Content-Type: application/json" \
-     -d '{
-       "name": "My App",
-       "domain": "myapp.com",
-       "admin_email": "admin@myapp.com",
-       "settings": {
-         "otp_enabled": true,
-         "session_timeout_minutes": 1440,
-         "rate_limit_per_minute": 100
-       },
-       "is_active": true
-     }'
+     -d '{"name":"Test App","domain":"company.com","settings":{"otp_enabled":true}}'
 
-# List all tenants
+# List/Get/Update/Delete
 curl -X GET http://localhost:8080/admin/tenants
-
-# Get specific tenant
-curl -X GET http://localhost:8080/admin/tenants/{tenant-id}
-
-# Update tenant settings
-curl -X PUT http://localhost:8080/admin/tenants/{tenant-id} \
-     -H "Content-Type: application/json" \
-     -d '{
-       "settings": {
-         "otp_enabled": false,
-         "session_timeout_minutes": 720
-       }
-     }'
-
-# Delete tenant
-curl -X DELETE http://localhost:8080/admin/tenants/{tenant-id}
+curl -X PUT http://localhost:8080/admin/tenants/{id} -d '{"settings":{"otp_enabled":false}}'
+curl -X DELETE http://localhost:8080/admin/tenants/{id}
 ```
 
-#### Test Multi-Tenant Login
+#### Test Multi-Tenant Login (Password-based)
 ```bash
-# Login to localhost tenant
+# Login to different tenants using Origin header
 curl -X POST http://localhost:8080/login \
-     -H "Origin: http://localhost:3000" \
-     -H "Content-Type: application/x-www-form-urlencoded" \
-     -d "email=user@localhost.com" \
-     -d "password=password123" \
-     -c "cookies_localhost.txt"
+     -H "Origin: https://tenant1.com" \
+     -d "email=user@tenant1.com&password=password123" -c cookies1.txt
 
-# Login to myapp.com tenant
 curl -X POST http://localhost:8080/login \
-     -H "Origin: https://myapp.com" \
-     -H "Content-Type: application/x-www-form-urlencoded" \
-     -d "email=user@myapp.com" \
-     -d "password=password123" \
-     -c "cookies_myapp.txt"
-
-# Login to mysecond.app tenant
-curl -X POST http://localhost:8080/login \
-     -H "Origin: https://mysecond.app" \
-     -H "Content-Type: application/x-www-form-urlencoded" \
-     -d "email=user@mysecond.com" \
-     -d "password=password123" \
-     -c "cookies_mysecond.txt"
+     -H "Origin: https://tenant2.com" \
+     -d "email=user@tenant2.com&password=password123" -c cookies2.txt
 ```
 
-#### Test Cross-Tenant Session Isolation
+#### Test Multi-Tenant OTP Workflow
 ```bash
-# Try to access localhost tenant with myapp.com session (should fail)
-curl -X POST http://localhost:8080/dashboard \
-     -H "Origin: http://localhost:3000" \
-     -H "X-CSRF-Token: CSRF_TOKEN_FROM_MYAPP" \
-     -b "cookies_myapp.txt"
-
-# Try to access myapp.com tenant with mysecond.app session (should fail)
-curl -X POST http://localhost:8080/dashboard \
-     -H "Origin: https://myapp.com" \
-     -H "X-CSRF-Token: CSRF_TOKEN_FROM_MYSECOND" \
-     -b "cookies_mysecond.txt"
-```
-
-#### Test Tenant-Specific Logout
-```bash
-# Logout from localhost tenant
-curl -X POST http://localhost:8080/logout \
-     -H "Origin: http://localhost:3000" \
-     -H "X-CSRF-Token: CSRF_TOKEN_FROM_LOCALHOST" \
-     -H "Content-Type: application/x-www-form-urlencoded" \
-     -b "cookies_localhost.txt" \
-     -c "cookies_localhost.txt"
-
-# Verify cookies are cleared
-cat cookies_localhost.txt
-
-# Logout from myapp.com tenant
-curl -X POST http://localhost:8080/logout \
-     -H "Origin: https://myapp.com" \
-     -H "X-CSRF-Token: CSRF_TOKEN_FROM_MYAPP" \
-     -H "Content-Type: application/x-www-form-urlencoded" \
-     -b "cookies_myapp.txt" \
-     -c "cookies_myapp.txt"
-
-# Verify cookies are cleared
-cat cookies_myapp.txt
-```
-
-#### Test Data Isolation
-```bash
-# Register same email on different tenants (should succeed)
+# 1. Register with OTP on tenant1
 curl -X POST http://localhost:8080/register \
-     -H "Origin: https://myapp.com" \
-     -H "Content-Type: application/x-www-form-urlencoded" \
-     -d "email=test@example.com" \
-     -d "password=password123"
+     -H "Origin: https://company1.example.com" \
+     -d "email=user@company1.com" -c cookies1.txt
+# Response includes: "otp": "123456", "csrf_token": "csrf123"
 
-curl -X POST http://localhost:8080/register \
-     -H "Origin: https://mysecond.app" \
-     -H "Content-Type: application/x-www-form-urlencoded" \
-     -d "email=test@example.com" \
-     -d "password=password456"
+# 2. Verify OTP (use correct field name 'otp')
+curl -X POST http://localhost:8080/verify-otp \
+     -H "Origin: https://company1.example.com" \
+     -H "X-CSRF-Token: csrf123" \
+     -d "otp=123456" -b cookies1.txt
+
+# 3. Login with OTP on different tenant
+curl -X POST http://localhost:8080/login \
+     -H "Origin: https://company2.example.com" \
+     -d "email=user@company2.com" -c cookies2.txt
+
+# 4. Test cross-tenant OTP isolation (should fail)
+curl -X POST http://localhost:8080/verify-otp \
+     -H "Origin: https://company2.example.com" \
+     -d "otp=123456" -b cookies2.txt
+# Response: 401 Unauthorized - OTPs are tenant-scoped
 ```
 
-#### Test Invalid Origins (CORS)
+#### Test OTP Field Validation
 ```bash
-# Try to register with invalid origin (should fail)
-curl -X POST http://localhost:8080/register \
-     -H "Origin: https://malicious.com" \
-     -H "Content-Type: application/x-www-form-urlencoded" \
-     -d "email=hacker@malicious.com" \
-     -d "password=password123"
+# ✅ Correct field name 'otp' (succeeds):
+curl -X POST http://localhost:8080/verify-otp -d "otp=123456"
 
-# Try to login with invalid origin (should fail)
-curl -X POST http://localhost:8080/login \
-     -H "Origin: https://unauthorized.com" \
-     -H "Content-Type: application/x-www-form-urlencoded" \
-     -d "email=user@myapp.com" \
-     -d "password=password123"
+# ❌ Wrong field name 'otp_code' (fails with 401):
+curl -X POST http://localhost:8080/verify-otp -d "otp_code=123456"
+# Response: {"error":"Invalid OTP code"}
+
+# Migration: Update 'otp_code' → 'otp' in forms and JSON
 ```
 
 ### ✅ Integration Tests (IMPLEMENTED)
@@ -427,12 +323,7 @@ curl -X POST http://localhost:8080/login \
 
 ### Load Testing
 ```bash
-# Test multi-tenant load capacity
 ab -n 1000 -c 10 -H "Origin: https://myapp.com" https://api.yourdomain.com/login
-ab -n 1000 -c 10 -H "Origin: https://mysecond.app" https://api.yourdomain.com/login
-
-# Test admin API load
-ab -n 100 -c 5 -T "application/json" -p tenant_payload.json https://api.yourdomain.com/admin/tenants
 ```
 
 ## 📋 Migration Guide
@@ -441,67 +332,10 @@ ab -n 100 -c 5 -T "application/json" -p tenant_payload.json https://api.yourdoma
 The multi-tenant database schema has been implemented and can be applied to existing databases.
 
 ### 🔄 Data Migration Steps (TODO)
-1. **Backup Database**
-   ```bash
-   pg_dump gobackend > backup_$(date +%Y%m%d_%H%M%S).sql
-   ```
-   Uses `-Fc` format for compressed, flexible backups:
-   ```bash
-   # Full database backup with timestamp
-   pg_dump -Fc -v \
-     -h $DB_HOST \
-     -U $DB_USER \
-     -d $DB_NAME \
-     -f backup_$(date +%Y%m%d_%H%m%S).dump
-
-   # Verify backup
-   pg_restore --list backup_*.dump | head -n 10
-   ```
-
-2. **Run Schema Migration**
-   ```bash
-   # Apply multi-tenant schema migrations
-   goose -dir internal/db/migrations postgres "user=... dbname=..." up
-   ```
-
-3. **Data Migration** (TODO - Script needed)
-   ```bash
-   # Create migration tool first
-   # go run cmd/migrate/main.go -dry-run
-
-   # Actual migration with verbose logging
-   # go run cmd/migrate/main.go -verbose 2>&1 | tee migration.log
-
-   # Verify migration results
-   psql -h $DB_HOST -U $DB_USER -d $DB_NAME \
-     -c "SELECT COUNT(*) FROM tenants; SELECT COUNT(*) FROM users WHERE tenant_id IS NOT NULL;"
-   ```
-
-4. **Deploy New Code**
-   ```bash
-   docker-compose down
-   docker-compose up -d --build
-   ```
-
-5. **Verify Migration**
-   ```bash
-   # Verify schema version
-   psql -h $DB_HOST -U $DB_USER -d $DB_NAME \
-     -c "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1;"
-
-   # Test multi-tenant endpoints
-   for tenant in localhost myapp.com mysecond.app; do
-     curl -s -o /dev/null -w "%{http_code}" \
-       -H "Origin: https://$tenant" \
-       https://api.yourdomain.com/health
-     echo " - $tenant"
-   done
-
-   # Test admin API
-   curl -s -o /dev/null -w "%{http_code}" \
-     https://api.yourdomain.com/admin/tenants
-   echo " - Admin API"
-   ```
+1. **Backup Database**: `pg_dump gobackend > backup_$(date +%Y%m%d).sql`
+2. **Run Schema Migration**: `goose -dir internal/db/migrations postgres "..." up`
+3. **Deploy New Code**: `docker-compose up -d --build`
+4. **Verify**: Test endpoints with different Origin headers
 
 ## 🎉 Implementation Summary
 
@@ -509,10 +343,11 @@ The multi-tenant database schema has been implemented and can be applied to exis
 - **Database Schema**: Full multi-tenant schema with tenant isolation
 - **Tenant Management**: CRUD operations via admin API with strongly-typed models
 - **Authentication**: Tenant-aware authentication flows (password + OTP)
+- **OTP Field Standardization**: Updated from `otp_code` to `otp` with validation and error handling
 - **Middleware**: Domain-based tenant identification and context injection
 - **Data Isolation**: Complete separation of user data between tenants
 - **Session Management**: Tenant-scoped session validation and CSRF protection
-- **Testing**: Comprehensive multi-tenant test coverage
+- **Testing**: Comprehensive multi-tenant test coverage with OTP field validation tests
 - **SQLC Integration**: Type-safe database operations with tenant support
 
 ### 🔄 Remaining Work

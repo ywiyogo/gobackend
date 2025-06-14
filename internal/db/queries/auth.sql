@@ -47,27 +47,27 @@ WHERE session_token = $1
 LIMIT 1;
 
 -- name: CreateUserWithOtp :one
-INSERT INTO users (id, email, otp_code, otp_expires_at, created_at, updated_at)
+INSERT INTO users (id, email, otp, otp_expires_at, created_at, updated_at)
 VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW())
 RETURNING *;
 
 -- name: SetUserOTP :exec
 UPDATE users
-SET otp_code = $1,
+SET otp = $1,
     otp_expires_at = $2,
     updated_at = NOW()
 WHERE id = $3;
 
 -- name: GetUserOTP :one
-SELECT otp_code, otp_expires_at
+SELECT otp, otp_expires_at
 FROM users
 WHERE id = $1
-  AND otp_code IS NOT NULL
+  AND otp IS NOT NULL
   AND otp_expires_at > NOW();
 
 -- name: ClearUserOTP :exec
 UPDATE users
-SET otp_code = NULL,
+SET otp = NULL,
     otp_expires_at = NULL,
     updated_at = NOW()
 WHERE id = $1;
@@ -82,13 +82,13 @@ WHERE id = $1;
 
 -- name: GetTenantByDomain :one
 SELECT id, name, domain, subdomain, api_key, settings, is_active, created_at, updated_at
-FROM tenants 
+FROM tenants
 WHERE domain = $1 AND is_active = true
 LIMIT 1;
 
 -- name: GetTenantByAPIKey :one
 SELECT id, name, domain, subdomain, api_key, settings, is_active, created_at, updated_at
-FROM tenants 
+FROM tenants
 WHERE api_key = $1 AND is_active = true
 LIMIT 1;
 
@@ -105,9 +105,9 @@ WHERE id = $1;
 -- Tenant-aware user queries
 
 -- name: GetUserByEmailAndTenant :one
-SELECT id, tenant_id, email, password_hash, otp_code, otp_expires_at, created_at, updated_at
-FROM users 
-WHERE tenant_id = $1 AND email = $2 
+SELECT id, tenant_id, email, password_hash, otp, otp_expires_at, created_at, updated_at
+FROM users
+WHERE tenant_id = $1 AND email = $2
 LIMIT 1;
 
 -- name: CreateUserWithPasswordInTenant :one
@@ -116,7 +116,7 @@ VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW())
 RETURNING *;
 
 -- name: CreateUserWithOtpInTenant :one
-INSERT INTO users (id, tenant_id, email, otp_code, otp_expires_at, created_at, updated_at)
+INSERT INTO users (id, tenant_id, email, otp, otp_expires_at, created_at, updated_at)
 VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW(), NOW())
 RETURNING *;
 
@@ -125,21 +125,20 @@ SELECT EXISTS(SELECT 1 FROM users WHERE tenant_id = $1 AND email = $2);
 
 -- name: SetUserOTPInTenant :exec
 UPDATE users
-SET otp_code = $3,
+SET otp = $3,
     otp_expires_at = $4,
     updated_at = NOW()
 WHERE id = $1 AND tenant_id = $2;
 
 -- name: GetUserOTPInTenant :one
-SELECT otp_code, otp_expires_at
+SELECT otp, otp_expires_at
 FROM users
 WHERE tenant_id = $1 AND id = $2
-  AND otp_code IS NOT NULL
-  AND otp_expires_at > NOW();
+  AND otp IS NOT NULL;
 
 -- name: ClearUserOTPInTenant :exec
 UPDATE users
-SET otp_code = NULL,
+SET otp = NULL,
     otp_expires_at = NULL,
     updated_at = NOW()
 WHERE tenant_id = $1 AND id = $2;
@@ -153,7 +152,7 @@ RETURNING *;
 
 -- name: GetSessionByTokenAndTenant :one
 SELECT id, tenant_id, user_id, session_token, csrf_token, user_agent, ip, expires_at, created_at
-FROM sessions 
+FROM sessions
 WHERE tenant_id = $1 AND session_token = $2 AND expires_at > NOW()
 LIMIT 1;
 
@@ -186,9 +185,9 @@ SET session_token = $3,
 WHERE tenant_id = $1 AND id = $2;
 
 -- name: GetUserByIDAndTenant :one
-SELECT id, tenant_id, email, password_hash, otp_code, otp_expires_at, created_at, updated_at
-FROM users 
-WHERE tenant_id = $1 AND id = $2 
+SELECT id, tenant_id, email, password_hash, otp, otp_expires_at, created_at, updated_at
+FROM users
+WHERE tenant_id = $1 AND id = $2
 LIMIT 1;
 
 -- Additional tenant management queries
@@ -200,7 +199,7 @@ ORDER BY created_at DESC;
 
 -- name: GetTenantByID :one
 SELECT id, name, domain, subdomain, api_key, settings, is_active, created_at, updated_at
-FROM tenants 
+FROM tenants
 WHERE id = $1
 LIMIT 1;
 

@@ -22,8 +22,9 @@ type LoginRequest struct {
 
 // VerifyOTPRequest represents an OTP verification request
 type VerifyOTPRequest struct {
-	SessionToken string `json:"session_token" validate:"required"`
-	OTPCode      string `json:"otp_code" validate:"required,len=6"`
+	Email        string `json:"email" validate:"required,email"`
+	OTP          string `json:"otp" validate:"required,len=6"`
+	SessionToken string `json:"session_token"`
 }
 
 // AuthResponse represents a successful authentication response
@@ -100,7 +101,7 @@ func HasPassword(user *sqlc.User) bool {
 
 // HasValidOTP checks if the user has a valid OTP that hasn't expired
 func HasValidOTP(user *sqlc.User) bool {
-	if !user.OtpCode.Valid || !user.OtpExpiresAt.Valid {
+	if !user.Otp.Valid || !user.OtpExpiresAt.Valid {
 		return false
 	}
 	return time.Now().Before(user.OtpExpiresAt.Time)

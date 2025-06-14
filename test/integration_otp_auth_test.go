@@ -45,7 +45,7 @@ func TestAuthenticationWorkflowWithOTP(t *testing.T) {
 
 	t.Run("Verify OTP", func(t *testing.T) {
 		data := url.Values{
-			"otp_code": {otpCode},
+			"otp": {otpCode},
 		}
 
 		resp := ts.postFormWithCSRF(t, "/verify-otp", data, csrfToken)
@@ -109,7 +109,7 @@ func TestAuthenticationWorkflowWithOTP(t *testing.T) {
 
 		// Verify the new OTP
 		verifyData := url.Values{
-			"otp_code": {newOTPCode},
+			"otp": {newOTPCode},
 		}
 
 		verifyResp := ts.postFormWithCSRF(t, "/verify-otp", verifyData, csrfToken)
@@ -154,7 +154,7 @@ func TestOTPErrorScenarios(t *testing.T) {
 
 		// Try to verify with invalid OTP
 		verifyData := url.Values{
-			"otp_code": {"000000"}, // Invalid OTP
+			"otp": {"000000"}, // Invalid OTP
 		}
 		verifyResp := ts.postFormWithCSRF(t, "/verify-otp", verifyData, csrfToken)
 		defer verifyResp.Body.Close()
@@ -165,7 +165,7 @@ func TestOTPErrorScenarios(t *testing.T) {
 	t.Run("Verify OTP with wrong session", func(t *testing.T) {
 		// Try to verify OTP without proper session
 		verifyData := url.Values{
-			"otp_code": {"123456"},
+			"otp": {"123456"},
 		}
 		verifyResp := ts.postForm(t, "/verify-otp", verifyData)
 		defer verifyResp.Body.Close()
@@ -177,7 +177,7 @@ func TestOTPErrorScenarios(t *testing.T) {
 		// This would require mocking time or creating an OTP with very short expiry
 		// For now, we test the basic flow
 		verifyData := url.Values{
-			"otp_code": {"123456"}, // Assume this is expired
+			"otp": {"123456"}, // Assume this is expired
 		}
 		verifyResp := ts.postForm(t, "/verify-otp", verifyData)
 		defer verifyResp.Body.Close()
@@ -202,13 +202,52 @@ func TestOTPErrorScenarios(t *testing.T) {
 		// Try multiple invalid OTP attempts
 		for i := 0; i < 3; i++ {
 			verifyData := url.Values{
-				"otp_code": {fmt.Sprintf("00000%d", i)}, // Invalid OTP
+				"otp": {fmt.Sprintf("00000%d", i)}, // Invalid OTP
 			}
 			verifyResp := ts.postFormWithCSRF(t, "/verify-otp", verifyData, csrfToken)
 			defer verifyResp.Body.Close()
 
 			assert.Equal(t, http.StatusUnauthorized, verifyResp.StatusCode)
 		}
+	})
+
+	t.Run("Verify OTP with invalid field name 'otp_code'", func(t *testing.T) {
+		// This test ensures that the API correctly rejects requests using the old field name 'otp_code'
+		// instead of the current field name 'otp'. This validates that the field name change is properly enforced.
+
+		// Register a new user for this test
+		wrongFieldEmail := fmt.Sprintf("test-wrong-field-%d@example.com", time.Now().Unix())
+		registerData := url.Values{
+			"email": {wrongFieldEmail},
+		}
+		registerResp := ts.postForm(t, "/register", registerData)
+		defer registerResp.Body.Close()
+		assert.Equal(t, http.StatusOK, registerResp.StatusCode)
+
+		// Extract CSRF token and OTP
+		body := getResponseBody(t, registerResp)
+		csrfToken := extractCSRFTokenFromResponse(body)
+		otpCode := extractOTPFromResponse(body)
+
+		// Try to verify with the old field name 'otp_code' instead of 'otp'
+		// This simulates a client using outdated API documentation or old code
+		verifyData := url.Values{
+			"otp_code": {otpCode}, // Wrong field name - should be 'otp'
+		}
+		verifyResp := ts.postFormWithCSRF(t, "/verify-otp", verifyData, csrfToken)
+		defer verifyResp.Body.Close()
+
+		// Should return unauthorized due to empty OTP (field name mismatch)
+		// When 'otp_code' is sent instead of 'otp', the system receives an empty OTP field
+		// and treats it as invalid, resulting in authentication failure
+		assert.Equal(t, http.StatusUnauthorized, verifyResp.StatusCode)
+
+		// Verify that the response indicates the OTP validation failed
+		responseBody := getResponseBody(t, verifyResp)
+		// The system should return an error about invalid OTP since the otp field is empty
+		// when otp_code is used instead of otp
+		assert.NotEmpty(t, responseBody, "Response should contain error message")
+		t.Logf("Response when using wrong field name 'otp_code': %s", responseBody)
 	})
 }
 
@@ -235,7 +274,7 @@ func TestOTPSessionManagement(t *testing.T) {
 
 		// Verify OTP should create a full session
 		verifyData := url.Values{
-			"otp_code": {otpCode},
+			"otp": {otpCode},
 		}
 		verifyResp := ts.postFormWithCSRF(t, "/verify-otp", verifyData, csrfToken)
 		defer verifyResp.Body.Close()
@@ -268,7 +307,7 @@ func TestOTPSessionManagement(t *testing.T) {
 
 		// Verify OTP
 		verifyData := url.Values{
-			"otp_code": {otpCode},
+			"otp": {otpCode},
 		}
 		verifyResp := ts.postFormWithCSRF(t, "/verify-otp", verifyData, csrfToken)
 		defer verifyResp.Body.Close()

@@ -39,7 +39,7 @@ type User struct {
 	ID           uuid.UUID          `json:"id"`
 	Email        string             `json:"email"`
 	PasswordHash pgtype.Text        `json:"password_hash"`
-	OtpCode      pgtype.Text        `json:"otp_code"`
+	Otp          pgtype.Text        `json:"otp"`
 	OtpExpiresAt pgtype.Timestamptz `json:"otp_expires_at"`
 	CreatedAt    time.Time          `json:"created_at"`
 	UpdatedAt    time.Time          `json:"updated_at"`

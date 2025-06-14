@@ -56,7 +56,7 @@ func (m *MockService) SendOTP(toEmail, toName, otpCode string, expiryTime time.T
 		Str("service", "mock").
 		Str("to_email", toEmail).
 		Str("to_name", toName).
-		Str("otp_code", otpCode).
+		Str("otp", otpCode).
 		Str("tenant_name", tenantName).
 		Time("expires_at", expiryTime).
 		Msg("Mock email sent - OTP verification code")

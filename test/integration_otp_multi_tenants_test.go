@@ -37,8 +37,6 @@ func TestTenantSettings(t *testing.T) {
 	otpTenant, err := ts.TenantService.CreateTenantAdmin(context.Background(), otpTenantReq)
 	require.NoError(t, err)
 
-
-
 	email := "settings@example.com"
 
 	// Test OTP tenant - should require OTP
@@ -56,7 +54,6 @@ func TestTenantSettings(t *testing.T) {
 		otpCode := extractOTPFromResponse(body)
 		assert.NotEmpty(t, otpCode, "OTP should be generated for OTP-enabled tenant")
 	})
-
 
 }
 
@@ -86,7 +83,7 @@ func TestMultiTenantOTPIsolation(t *testing.T) {
 
 	// Verify correct OTP on tenant 1 first (should work)
 	verifyData1 := url.Values{
-		"otp_code": {otpCode1},
+		"otp": {otpCode1},
 	}
 	verifyResp1 := ts.postFormWithOriginAndCSRF(t, "/verify-otp", verifyData1, fmt.Sprintf("https://%s", tenant1.Domain), csrfToken1)
 	defer verifyResp1.Body.Close()
@@ -107,7 +104,7 @@ func TestMultiTenantOTPIsolation(t *testing.T) {
 
 	// Try to verify tenant 1's OTP on tenant 2 (should fail)
 	verifyData := url.Values{
-		"otp_code": {otpCode1}, // Use tenant 1's OTP
+		"otp": {otpCode1}, // Use tenant 1's OTP
 	}
 	verifyResp := ts.postFormWithOriginAndCSRF(t, "/verify-otp", verifyData, fmt.Sprintf("https://%s", tenant2.Domain), csrfToken2)
 	defer verifyResp.Body.Close()
@@ -115,7 +112,7 @@ func TestMultiTenantOTPIsolation(t *testing.T) {
 
 	// Verify correct OTP on tenant 2 (should work)
 	verifyData2 := url.Values{
-		"otp_code": {otpCode2},
+		"otp": {otpCode2},
 	}
 	verifyResp2 := ts.postFormWithOriginAndCSRF(t, "/verify-otp", verifyData2, fmt.Sprintf("https://%s", tenant2.Domain), csrfToken2)
 	defer verifyResp2.Body.Close()
@@ -148,7 +145,7 @@ func TestMultiTenantOTPSessionSecurity(t *testing.T) {
 
 	// Verify OTP on tenant 1
 	verifyData := url.Values{
-		"otp_code": {otpCode1},
+		"otp": {otpCode1},
 	}
 	verifyResp1 := ts.postFormWithOriginAndCSRF(t, "/verify-otp", verifyData, fmt.Sprintf("https://%s", tenant1.Domain), csrfToken1)
 	defer verifyResp1.Body.Close()
@@ -214,7 +211,7 @@ func TestMultiTenantOTPWorkflow(t *testing.T) {
 
 		// Verify OTP
 		verifyData := url.Values{
-			"otp_code": {otpCode},
+			"otp": {otpCode},
 		}
 		verifyResp := ts.postFormWithOriginAndCSRF(t, "/verify-otp", verifyData, fmt.Sprintf("https://%s", customTenant.Domain), csrfToken)
 		defer verifyResp.Body.Close()
@@ -259,7 +256,7 @@ func TestMultiTenantOTPErrors(t *testing.T) {
 
 		// Try invalid OTP
 		verifyData := url.Values{
-			"otp_code": {"000000"}, // Invalid OTP
+			"otp": {"000000"}, // Invalid OTP
 		}
 		verifyResp := ts.postFormWithOriginAndCSRF(t, "/verify-otp", verifyData, fmt.Sprintf("https://%s", tenant.Domain), csrfToken)
 		defer verifyResp.Body.Close()
@@ -291,7 +288,7 @@ func TestMultiTenantOTPErrors(t *testing.T) {
 
 		// Try to use tenant 1's OTP on tenant 2
 		verifyData := url.Values{
-			"otp_code": {otpCode1},
+			"otp": {otpCode1},
 		}
 		verifyResp := ts.postFormWithOriginAndCSRF(t, "/verify-otp", verifyData, fmt.Sprintf("https://%s", tenant2.Domain), csrfToken2)
 		defer verifyResp.Body.Close()
@@ -336,7 +333,7 @@ func TestMultiTenantOTPLogin(t *testing.T) {
 	initialCSRF := extractCSRFTokenFromResponse(body)
 
 	verifyData := url.Values{
-		"otp_code": {initialOTP},
+		"otp": {initialOTP},
 	}
 	verifyResp := ts.postFormWithOriginAndCSRF(t, "/verify-otp", verifyData, fmt.Sprintf("https://%s", tenant.Domain), initialCSRF)
 	defer verifyResp.Body.Close()
@@ -365,7 +362,7 @@ func TestMultiTenantOTPLogin(t *testing.T) {
 
 		// Verify new OTP
 		verifyLoginData := url.Values{
-			"otp_code": {loginOTP},
+			"otp": {loginOTP},
 		}
 		verifyLoginResp := ts.postFormWithOriginAndCSRF(t, "/verify-otp", verifyLoginData, fmt.Sprintf("https://%s", tenant.Domain), loginCSRF)
 		defer verifyLoginResp.Body.Close()
