@@ -289,6 +289,9 @@ curl -X POST http://localhost:8080/verify-otp \
      -H "X-CSRF-Token: csrf123" \
      -d "otp=123456" -b cookies1.txt
 
+# return
+{"user":{"id":"057b02c6-e5b7-4bfb-9a6e-57861f29068c","email":"test@example.com","created_at":"2025-06-14T09:44:45.202993364Z","updated_at":"2025-06-14T09:44:45.202993404Z"},"session_token":"TMv9-l1zDuT01Ujja5n7yxgbPwTSkeBBuyM0IiLtCAU","csrf_token":"gGqO7kcBPh7nSe7G-HZEWNvsvRmZjuqwGAmhkSXiT68","expires_at":"2025-06-15T09:44:45.19761774Z","requires_otp":false,"message":"OTP verified successfully"}
+
 # 3. Login with OTP on different tenant
 curl -X POST http://localhost:8080/login \
      -H "Origin: https://company2.example.com" \

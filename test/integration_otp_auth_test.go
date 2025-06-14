@@ -1,6 +1,7 @@
 package test
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -55,6 +56,20 @@ func TestAuthenticationWorkflowWithOTP(t *testing.T) {
 
 		body := getResponseBody(t, resp)
 		assert.Contains(t, body, "OTP verified successfully")
+
+		// Parse response JSON to verify email is present
+		var response map[string]interface{}
+		err := json.Unmarshal([]byte(body), &response)
+		require.NoError(t, err, "Response should be valid JSON")
+
+		// Check that user object exists and has email
+		user, exists := response["user"].(map[string]interface{})
+		require.True(t, exists, "Response should contain user object")
+
+		email, exists := user["email"].(string)
+		require.True(t, exists, "User object should contain email field")
+		assert.NotEmpty(t, email, "Email should not be empty")
+		assert.Equal(t, testEmail, email, "Email should match registered email")
 
 		// Check for updated session cookie after OTP verification
 		var sessionCookie *http.Cookie

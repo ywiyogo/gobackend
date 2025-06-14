@@ -36,7 +36,6 @@ func NewService(repo AuthRepository) *Service {
 	mailerService, err := mailer.NewMailer()
 	if err != nil {
 		// Log error but don't fail - fallback to mock mailer
-		fmt.Printf("Warning: Failed to initialize mailer service: %v\n", err)
 		mailerService = mailer.NewMockMailer()
 	}
 
@@ -234,13 +233,6 @@ func (s *Service) ValidateSessionInTenant(ctx context.Context, sessionToken stri
 
 // VerifyOTPInTenant verifies OTP and updates session in a specific tenant
 func (s *Service) VerifyOTPInTenant(ctx context.Context, sessionToken, otpCode string, tenantID uuid.UUID) (*sqlc.Session, error) {
-	log.Debug().
-		Str("pkg", pkgName).
-		Str("method", "VerifyOTPInTenant").
-		Str("session_token", sessionToken[:8]+"...").
-		Str("otp", otpCode).
-		Str("tenant_id", tenantID.String()).
-		Msg("Starting OTP verification")
 
 	// Get current session
 	session, err := s.ValidateSessionInTenant(ctx, sessionToken, tenantID)
@@ -254,13 +246,6 @@ func (s *Service) VerifyOTPInTenant(ctx context.Context, sessionToken, otpCode s
 			Msg("Session validation failed")
 		return nil, err
 	}
-
-	log.Debug().
-		Str("pkg", pkgName).
-		Str("method", "VerifyOTPInTenant").
-		Str("user_id", session.UserID.String()).
-		Str("tenant_id", tenantID.String()).
-		Msg("Session validated, checking OTP")
 
 	// Validate OTP
 	isValid, err := s.repo.ValidateOTPInTenant(ctx, session.UserID, tenantID, otpCode)
@@ -403,7 +388,6 @@ func (s *Service) Register(w http.ResponseWriter, r *http.Request) error {
 		http.Error(w, "email is required", http.StatusBadRequest)
 		return fmt.Errorf("email is required")
 	}
-	fmt.Println("Registering user with email:", email)
 	if !utils.IsValidEmail(email) {
 		http.Error(w, "invalid email format", http.StatusBadRequest)
 		return fmt.Errorf("invalid email format: %s", email)
@@ -437,7 +421,6 @@ func (s *Service) Register(w http.ResponseWriter, r *http.Request) error {
 			Expires:  time.Now().Add(24 * time.Hour),
 		})
 
-		fmt.Fprintf(w, "Setting cookie with session token: %s, CSRF: %s.\n OTP: %s", sessionToken, csrfToken, otpCode)
 		return nil
 	} else {
 		// Password flow - check if user already exists
@@ -475,7 +458,6 @@ func (s *Service) Register(w http.ResponseWriter, r *http.Request) error {
 		}
 
 		// Password registration doesn't create session - user must login separately
-		fmt.Fprintf(w, "User registered successfully with email: %s", email)
 		return nil
 	}
 }
@@ -532,8 +514,7 @@ func (s *Service) Login(w http.ResponseWriter, r *http.Request) error {
 		Expires:  time.Now().Add(24 * time.Hour),
 		HttpOnly: true,
 	})
-	fmt.Fprintf(w, "User with email %s logged in successfully! \nsessionToken: %s, CSRF: %s.\n", email, sessionToken, csrfToken)
-	fmt.Fprintf(w, "OTP code: %s", otpCode)
+
 	return nil
 }
 
@@ -570,7 +551,6 @@ func (s *Service) Logout(w http.ResponseWriter, r *http.Request) error {
 	// Get user ID from session token
 	userID, err := s.repo.GetUserIDByToken(r.Context(), cookie.Value)
 	if err != nil {
-		fmt.Fprintf(w, "error getting user ID from session: %v", err)
 		email := r.FormValue("email")
 		if email != "" {
 			user, err := s.repo.GetUserByEmail(email)
@@ -612,7 +592,6 @@ func (s *Service) GenerateAndStoreOTP(r *http.Request) string {
 	// Check if email already exists
 	existingUser, err := s.repo.GetUserByEmail(email)
 	if err != nil {
-		fmt.Println("Error checking existing user:", err)
 		return ""
 	}
 	// Check if email doesn't exist yet

@@ -1,10 +1,8 @@
 package auth
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -363,64 +361,39 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 // VerifyOTP handles OTP verification with multi-tenant support
 func (h *Handler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("DEBUG: VerifyOTP handler called\n")
-
 	if r.Method != http.MethodPost {
-		fmt.Printf("DEBUG: Wrong method: %s\n", r.Method)
 		h.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	fmt.Printf("DEBUG: Method check passed\n")
 
 	// Get tenant from context
 	tenantObj, ok := tenant.GetTenantFromContext(r.Context())
 	if !ok {
-		fmt.Printf("DEBUG: No tenant in context\n")
 		h.writeError(w, "Tenant not found", http.StatusBadRequest)
 		return
 	}
-	fmt.Printf("DEBUG: Tenant found: %s\n", tenantObj.Name)
-
-	// Read raw request body
-	bodyBytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		fmt.Printf("DEBUG: Failed to read body: %v\n", err)
-		h.writeError(w, "Failed to read request", http.StatusBadRequest)
-		return
-	}
-	fmt.Printf("DEBUG: Raw body: %s\n", string(bodyBytes))
-
-	// Restore the body for parsing
-	r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
 	// Parse request
 	var req VerifyOTPRequest
 	if err := h.parseRequest(r, &req); err != nil {
-		fmt.Printf("DEBUG: Parse error: %v\n", err)
 		h.writeError(w, "Invalid request format", http.StatusBadRequest)
 		return
 	}
-	fmt.Printf("DEBUG: Parsed - Email: %s, OTP: %s, SessionToken: %s\n", req.Email, req.OTP, req.SessionToken)
 
 	// Get session token from cookie if not provided in request
 	sessionToken := req.SessionToken
 	if sessionToken == "" {
 		cookie, err := r.Cookie("session_token")
 		if err != nil {
-			fmt.Printf("DEBUG: No session cookie: %v\n", err)
 			h.writeError(w, "Session token required", http.StatusBadRequest)
 			return
 		}
 		sessionToken = cookie.Value
-		fmt.Printf("DEBUG: Got session from cookie: %s...\n", sessionToken[:8])
 	}
-
-	fmt.Printf("DEBUG: About to call VerifyOTPInTenant with OTP: %s\n", req.OTP)
 
 	// Verify OTP
 	session, err := h.authService.VerifyOTPInTenant(r.Context(), sessionToken, req.OTP, tenantObj.ID)
 	if err != nil {
-		fmt.Printf("DEBUG: VerifyOTPInTenant failed: %v\n", err)
 		log.Error().
 			Str("pkg", pkgName).
 			Str("method", "VerifyOTP").
@@ -431,15 +404,26 @@ func (h *Handler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Printf("DEBUG: OTP verification successful!\n")
-
-	// Get user information - we need to find the user by ID since we have it from session
-	// For now, let's create a basic user response from the session data
-	userResponse := &UserResponse{
-		ID:        session.UserID.String(),
-		Email:     "",         // We'd need to get this from the database if needed
-		CreatedAt: time.Now(), // Placeholder
-		UpdatedAt: time.Now(), // Placeholder
+	// Get user information from database
+	user, err := h.authService.repo.GetUserByIDAndTenant(r.Context(), session.UserID, tenantObj.ID)
+	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "VerifyOTP").
+			Str("user_id", session.UserID.String()).
+			Err(err).
+			Msg("Failed to get user information")
+		h.writeError(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	if user == nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "VerifyOTP").
+			Str("user_id", session.UserID.String()).
+			Msg("User not found")
+		h.writeError(w, "User not found", http.StatusNotFound)
+		return
 	}
 
 	// Set CORS headers
@@ -456,7 +440,7 @@ func (h *Handler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		Msg("OTP verified successfully")
 
 	response := &AuthResponse{
-		User:         userResponse,
+		User:         ToUserResponse(user),
 		SessionToken: session.SessionToken,
 		CSRFToken:    session.CsrfToken,
 		ExpiresAt:    session.ExpiresAt,
@@ -554,13 +538,26 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get user information - we need to find the user by ID since we have it from session
-	// For now, let's create a basic user response from the session data
-	userResponse := &UserResponse{
-		ID:        session.UserID.String(),
-		Email:     "",         // We'd need to get this from the database if needed
-		CreatedAt: time.Now(), // Placeholder
-		UpdatedAt: time.Now(), // Placeholder
+	// Get user information from database
+	user, err := h.authService.repo.GetUserByIDAndTenant(r.Context(), session.UserID, tenantObj.ID)
+	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "Dashboard").
+			Str("user_id", session.UserID.String()).
+			Err(err).
+			Msg("Failed to get user information")
+		h.writeError(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	if user == nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "Dashboard").
+			Str("user_id", session.UserID.String()).
+			Msg("User not found")
+		h.writeError(w, "User not found", http.StatusNotFound)
+		return
 	}
 
 	// Get user sessions
@@ -583,7 +580,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"user":     userResponse,
+		"user":     ToUserResponse(user),
 		"tenant":   tenantObj.Name,
 		"sessions": sessionInfos,
 		"message":  "Dashboard data retrieved successfully",

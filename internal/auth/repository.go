@@ -370,13 +370,6 @@ func (r *UserRepo) ClearUserOTPInTenant(ctx context.Context, userID, tenantID uu
 
 // ValidateOTPInTenant validates OTP for a user within a specific tenant
 func (r *UserRepo) ValidateOTPInTenant(ctx context.Context, userID, tenantID uuid.UUID, otp string) (bool, error) {
-	log.Debug().
-		Str("pkg", pkgName).
-		Str("method", "ValidateOTPInTenant").
-		Str("user_id", userID.String()).
-		Str("tenant_id", tenantID.String()).
-		Str("submitted_otp", otp).
-		Msg("Starting OTP validation")
 
 	otpCode, expiresAt, err := r.GetUserOTPInTenant(ctx, userID, tenantID)
 	if err != nil {
@@ -389,17 +382,6 @@ func (r *UserRepo) ValidateOTPInTenant(ctx context.Context, userID, tenantID uui
 			Msg("Failed to get OTP from database")
 		return false, err
 	}
-
-	log.Debug().
-		Str("pkg", pkgName).
-		Str("method", "ValidateOTPInTenant").
-		Str("user_id", userID.String()).
-		Str("tenant_id", tenantID.String()).
-		Str("stored_otp", otpCode).
-		Str("submitted_otp", otp).
-		Time("expires_at", expiresAt).
-		Bool("is_expired", time.Now().After(expiresAt)).
-		Msg("Retrieved OTP from database")
 
 	if otpCode == "" {
 		log.Warn().
@@ -423,15 +405,6 @@ func (r *UserRepo) ValidateOTPInTenant(ctx context.Context, userID, tenantID uui
 	}
 
 	isMatch := otpCode == otp
-	log.Debug().
-		Str("pkg", pkgName).
-		Str("method", "ValidateOTPInTenant").
-		Str("user_id", userID.String()).
-		Str("tenant_id", tenantID.String()).
-		Str("stored_otp", otpCode).
-		Str("submitted_otp", otp).
-		Bool("is_match", isMatch).
-		Msg("OTP comparison result")
 
 	return isMatch, nil
 }
@@ -452,12 +425,6 @@ func (r *UserRepo) DeleteSessionByIDAndTenant(ctx context.Context, sessionID int
 			Msg("Failed to delete session")
 		return fmt.Errorf("failed to delete session by ID and tenant: %w", err)
 	}
-	log.Info().
-		Str("pkg", pkgName).
-		Str("method", "DeleteSessionByIDAndTenant").
-		Int64("session_id", sessionID).
-		Str("tenant_id", tenantID.String()).
-		Msg("Session deleted successfully")
 
 	return nil
 }
