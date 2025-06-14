@@ -8,9 +8,6 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - gobackend-pgdata:/var/lib/postgresql/data
-    # Removed port binding - database only accessible internally
-    # ports:
-    #   - "${DB_PORT}:${DB_PORT}"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 60s
@@ -68,8 +65,9 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    # port mapping (external:internal) with default 8090:8090
     ports:
-      - "${BACKEND_PORT:-8090}:8080"
+      - "${PORT:-8090}:${PORT:-8090}"
 
   # caddy:
   #   image: caddy:2-alpine
