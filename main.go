@@ -170,9 +170,15 @@ func main() {
 	}
 	router.AppendHandlerFromMap(routesNotes)
 
-	log.Println("Starting server on :8080")
+	// Get port from environment variable, default to 8080
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	log.Printf("Starting server on :%s", port)
 	// Start the server
-	if err := http.ListenAndServe(":8080", router.Handler()); err != nil {
+	if err := http.ListenAndServe(":"+port, router.Handler()); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
 

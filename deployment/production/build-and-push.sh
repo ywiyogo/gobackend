@@ -153,8 +153,16 @@ build_image() {
 test_image() {
     log_info "Testing Docker image..."
 
-    # Test that the image can start
-    CONTAINER_ID=$(docker run -d --rm "${DOCKER_IMAGE}")
+    # Test that the image can start with minimal environment variables
+    CONTAINER_ID=$(docker run -d --rm \
+        -e DB_USER=test \
+        -e DB_PASSWORD=test \
+        -e DB_NAME=test \
+        -e DB_HOST=localhost \
+        -e DB_PORT=5432 \
+        -e APP_ENV=test \
+        -e PORT=8090 \
+        "${DOCKER_IMAGE}")
 
     # Wait a moment for startup
     sleep 2

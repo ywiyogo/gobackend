@@ -8,7 +8,7 @@ build:
 build-prod:
 	@go mod tidy
 	@mkdir -p tmp
-	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v3 go build -o tmp/gobackend main.go
+	@CGO_ENABLED=${CGO_ENABLED:-0} GOOS=${GOOS:-linux} GOARCH=${GOARCH:-amd64} GOAMD64=${GOAMD64:-v3} go build -o tmp/gobackend main.go
 
 run:
 	@./tmp/main

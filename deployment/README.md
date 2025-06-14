@@ -1,202 +1,220 @@
 # 🚀 Deployment Guide
 
-Simple deployment configurations for the Go Backend application with multi-tenant support.
+Optimized deployment for Go Backend with multi-tenant support using pre-built Docker images.
 
 ## 🎯 Quick Start
 
 ### Production Deployment
 
 ```bash
-# 1. Change directory, don't start on the roof folder!
+# 1. Configure environment
 cd deployment/production
-
-# 2. Configure environment. Don't move it to the project root folder
-
 cp .env.example .env
 # Edit .env with your production values
 
-# 2. Update domains in Caddyfile
-# Edit Caddyfile with your actual domains
-
-# 3. Deploy
-chmod +x deployment/production/deploy.sh
+# 2. Deploy
 ./deploy.sh
 ```
 
-## 🏗️ Production Environment
+## 🏗️ Optimized Workflow
 
-**Features:**
-- Automatic HTTPS with Let's Encrypt
-- Rate limiting and security headers
-- Multi-tenant domain support
-- Database migrations
-- Health checks
+Instead of building on your VPS (saves CPU/memory):
 
-**Requirements:**
-- Valid domain names pointed to your server
-- Email for Let's Encrypt certificates
-- Docker and Docker Compose installed
+# 1. **Build locally**: `./build-and-push.sh`
+2. **Push to Docker Hub**: Automatic
+3. **Deploy on VPS**: `./deploy.sh` (pulls pre-built image)
 
-**Ports:**
-- `80` - HTTP (redirects to HTTPS)
-- `443` - HTTPS
-- `2019` - Caddy admin interface
+### Build & Push (Local Machine)
+
+```bash
+# Navigate to production directory
+cd deployment/production
+
+# Basic build and push
+./build-and-push.sh
+
+# With commit hash (recommended)
+./build-and-push.sh --tag-with-commit
+
+# Build only (no push)
+./build-and-push.sh --no-push
+```
 
 ## 🔧 Configuration
 
-### Environment Variables
-
-Copy `.env.example` to `.env` and configure:
+### Environment Variables (.env)
 
 ```bash
 # Database
-DB_USER=gobackend_prod
+DB_USER=postgres
 DB_PASSWORD=your_strong_password
 DB_NAME=gobackend_production
+DB_HOST=db
+DB_PORT=5432
 
-# SSL Configuration
-ACME_EMAIL=your-email@example.com
+# Docker Image (Docker Hub)
+DOCKER_USERNAME=your_dockerhub_username
+DOCKER_IMAGE_NAME=gobackend
+DOCKER_IMAGE_TAG=latest
 
-# SMTP Configuration for Email Service for OTP enabled
-
+# SMTP for OTP
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=your_email@gmail.com
+SMTP_PASSWORD=your_app_password
+EMAIL_MODE=production
 ```
 
-### Domain Configuration
-
-Edit the `Caddyfile` to include your domains:
-
-```
-your-domain.com, api.your-domain.com {
-    # Configuration is already set up
-    # Just replace the example domains
-}
-```
-
-## 🚀 Deployment
-
-The deployment script will:
-1. Check prerequisites
-2. Pull latest code changes
-3. Build and start containers
-4. Run database migrations
-5. Perform health checks
+### Docker Hub Setup
 
 ```bash
-./deploy.sh
+# Login to Docker Hub
+docker login
 ```
 
-## 🔍 Monitoring
+## 🚀 Deployment Process
 
-### Health Check Endpoints
+The deployment script automatically:
+1. ✅ Pulls latest code from Git
+2. ✅ Pulls pre-built Docker image
+3. ✅ Stops old containers
+4. ✅ Starts new containers with migrations
+5. ✅ Runs health checks
 
-- `/health` - Basic health status
-- `/ready` - Readiness check
-- `/live` - Liveness check
+## 🔍 Health Monitoring
 
-### Useful Commands
+### Endpoints
+- `/health` - Comprehensive health check (database + tenants)
+- `/ready` - Readiness check (database connectivity)
+- `/live` - Liveness check (always OK)
 
+### Commands
 ```bash
 # View logs
 docker compose logs -f
 
-# Check service status
+# Check status
 docker compose ps
 
 # Restart services
 docker compose restart
 
-# Access database
-docker compose exec db psql -U $DB_USER $DB_NAME
-
 # Monitor resources
 docker stats
 ```
 
-## 🔒 Security
+## 📦 Services
 
-### Automatic Security Features
-- ✅ HTTPS with Let's Encrypt
-- ✅ Security headers (HSTS, XSS protection)
-- ✅ Rate limiting
-- ✅ Secure database setup
-
-### Recommended Firewall Rules
-```bash
-sudo ufw allow ssh
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw enable
-```
+- **db**: PostgreSQL 15 with health checks
+- **migrate**: Database migrations (runs once)
+- **backend**: Go application (pulls from Docker Hub)
 
 ## 🛠️ Troubleshooting
 
-### Common Issues
-
-**SSL Certificate Problems**
+### Build Issues
 ```bash
-# Check Caddy logs
-docker compose logs caddy
+# Check Docker
+docker info
 
-# Reload configuration
-docker compose exec caddy caddy reload
+# Test local build
+docker build -f deployment/production/Dockerfile -t test .
 ```
 
-**Database Connection Issues**
+### Registry Issues
 ```bash
-# Check database status
-docker compose ps db
+# Re-login
+docker login
 
-# Test connection
-docker compose exec db pg_isready -h localhost -p 5432
+# Test pull
+docker pull your-username/gobackend:latest
 ```
 
-**Application Not Starting**
+### Deployment Issues
 ```bash
-# Check application logs
-docker compose logs backend
+# Check logs
+docker compose logs -f backend
 
-# Test health endpoint
-curl -f http://localhost/health
+# Reset services
+docker compose down && docker compose up -d
+
+# Test health
+curl http://localhost:8090/health
 ```
 
-** Safe Production Rollback Process**
-# 1. Create backup first
+## 🔒 Security Features
+
+- ✅ Non-root container user
+- ✅ Health checks every 60s
+- ✅ Database isolation (no external ports)
+- ✅ Tenant table validation
+
+## 📈 Benefits
+
+**Resource Savings on VPS:**
+- **CPU**: No compilation during deployment
+- **Memory**: No build-time usage
+- **Time**: 2-3x faster deployments
+- **Reliability**: Pre-tested images
+
+## 🔄 Development Workflow
+
 ```bash
-docker-compose exec db pg_dump -U ${DB_USER} ${DB_NAME} > backup_$(date +%Y%m%d_%H%M%S).sql
+# Local development
+1. Make changes
+2. Test locally
+3. Commit to Git
+4. cd deployment/production && ./build-and-push.sh --tag-with-commit
+5. SSH to VPS: ./deploy.sh
 ```
-# 2. Run the rollback
+
+## 📋 Prerequisites
+
+### Local Machine
+- Docker installed
+- Docker Hub account
+- Git access
+
+### VPS
+- Docker & Docker Compose
+- Git access
+- Internet connection (for pulling images)
+
+## 🏷️ Image Tagging
+
 ```bash
-docker-compose --profile emergency run --rm migrate-down
+# Latest tag
+./build-and-push.sh
+
+# Commit hash (recommended)
+./build-and-push.sh --tag-with-commit
+
+# Custom tag
+DOCKER_IMAGE_TAG=v1.0.0 ./build-and-push.sh
 ```
-# 3. Restart backend if needed
+
+## 🚨 Emergency Rollback
+
 ```bash
-docker-compose restart backend
+# Backup database first
+docker compose exec db pg_dump -U $DB_USER $DB_NAME > backup.sql
+
+# Rollback migration
+docker compose --profile emergency run --rm migrate-down
+
+# Restart
+docker compose restart backend
 ```
-
-## 📝 Deployment Checklist
-
-### Before Production Deployment
-
-- [ ] Domain names configured and pointing to server
-- [ ] SSL email configured in .env file
-- [ ] Strong database passwords set
-- [ ] Domains updated in Caddyfile
-- [ ] Firewall rules configured
-- [ ] Docker and Docker Compose installed
-
-## 🔄 CI/CD Integration
-
-The deployment integrates with GitHub Actions for automated deployments on push to main branch. See `.github/workflows/deploy.yml` for the full pipeline.
 
 ## 📞 Support
 
-For deployment issues:
+**Quick Diagnosis:**
+1. `docker compose ps` - Check service status
+2. `docker compose logs backend` - Check application logs
+3. `curl localhost:8090/health` - Test health endpoint
+4. `docker stats` - Check resource usage
 
-1. Check logs: `docker compose logs -f`
-2. Verify configuration files
-3. Test health endpoints
-4. Check firewall and DNS settings
-
-**Resources:**
-- [Docker Compose Documentation](https://docs.docker.com/compose/)
-- [Caddy Documentation](https://caddyserver.com/docs/)
+**Common Issues:**
+- **Build fails**: Check Docker daemon, Dockerfile path
+- **Push fails**: Re-run `docker login`
+- **Deploy fails**: Check .env file, Docker Hub access
+- **Health fails**: Check database connectivity, migrations
