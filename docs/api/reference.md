@@ -69,19 +69,25 @@ Content-Type: application/json
 Origin: your-tenant-domain.com
 ```
 
-**Request Body:**
+**Request Body (Password-based auth):**
 ```json
 {
   "email": "user@example.com",
-  "password": "password123",
-  "otp": "123456"
+  "password": "password123"
+}
+```
+
+**Request Body (OTP-based auth):**
+```json
+{
+  "email": "user@example.com"
 }
 ```
 
 **Fields:**
 - `email` (required): Valid email address
-- `password` (optional): Required if OTP is disabled for tenant
-- `otp` (optional): Required if OTP is enabled for tenant
+- `password` (required for password-based auth): User's password
+- Note: For OTP-based auth, only email is required. OTP will be sent to the provided email address
 
 **Response (Success - 200):**
 ```json
@@ -126,19 +132,25 @@ Content-Type: application/json
 Origin: your-tenant-domain.com
 ```
 
-**Request Body:**
+**Request Body (Password-based auth):**
 ```json
 {
   "email": "user@example.com",
-  "password": "password123",
-  "otp": "123456"
+  "password": "password123"
+}
+```
+
+**Request Body (OTP-based auth):**
+```json
+{
+  "email": "user@example.com"
 }
 ```
 
 **Fields:**
 - `email` (required): User's email address
-- `password` (optional): Required if OTP is disabled for tenant
-- `otp` (optional): Required if OTP is enabled for tenant
+- `password` (required for password-based auth): User's password
+- Note: For OTP-based auth, only email is required. OTP will be sent to the provided email address
 
 **Response (Success - 200):**
 ```json
@@ -641,17 +653,19 @@ Deletes a tenant.
 
 ### Password-Based Authentication
 
-1. **Register:** `POST /register` with email and password
-2. **Login:** `POST /login` with email and password
+1. **Register:** `POST /register` with `email` and `password`
+2. **Login:** `POST /login` with `email` and `password`
 3. **Access Protected Resources:** Include session cookie and CSRF token
 
 ### OTP-Based Authentication
 
-1. **Register:** `POST /register` with email only
+1. **Register:** `POST /register` with `email` only (OTP sent to email)
 2. **Verify OTP:** `POST /verify-otp` with email and OTP code
-3. **Login:** `POST /login` with email only
+3. **Login:** `POST /login` with `email` only (OTP sent to email)
 4. **Verify OTP:** `POST /verify-otp` with email and OTP code
 5. **Access Protected Resources:** Include session cookie and CSRF token
+
+**Note:** Password and OTP fields should never be used together. The authentication method is determined by the tenant's `otp_enabled` setting.
 
 ## Environment Configuration
 
