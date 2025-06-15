@@ -14,6 +14,7 @@ import (
 type Querier interface {
 	ClearUserOTP(ctx context.Context, id uuid.UUID) error
 	ClearUserOTPInTenant(ctx context.Context, arg ClearUserOTPInTenantParams) error
+	ClearVerificationToken(ctx context.Context, arg ClearVerificationTokenParams) error
 	CountSessionsByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountUsersByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
@@ -45,6 +46,7 @@ type Querier interface {
 	// Tenant-aware user queries
 	GetUserByEmailAndTenant(ctx context.Context, arg GetUserByEmailAndTenantParams) (GetUserByEmailAndTenantRow, error)
 	GetUserByIDAndTenant(ctx context.Context, arg GetUserByIDAndTenantParams) (GetUserByIDAndTenantRow, error)
+	GetUserByVerificationTokenAndTenant(ctx context.Context, arg GetUserByVerificationTokenAndTenantParams) (GetUserByVerificationTokenAndTenantRow, error)
 	GetUserIDBySessionToken(ctx context.Context, sessionToken string) (uuid.UUID, error)
 	GetUserOTP(ctx context.Context, id uuid.UUID) (GetUserOTPRow, error)
 	GetUserOTPInTenant(ctx context.Context, arg GetUserOTPInTenantParams) (GetUserOTPInTenantRow, error)
@@ -57,6 +59,7 @@ type Querier interface {
 	UpdateTenant(ctx context.Context, arg UpdateTenantParams) (Tenant, error)
 	UpdateTenantSettings(ctx context.Context, arg UpdateTenantSettingsParams) error
 	UpdateTenantStatus(ctx context.Context, arg UpdateTenantStatusParams) error
+	UpdateUserEmailVerified(ctx context.Context, arg UpdateUserEmailVerifiedParams) error
 	UserExistsByEmail(ctx context.Context, email string) (bool, error)
 	UserExistsByEmailAndTenant(ctx context.Context, arg UserExistsByEmailAndTenantParams) (bool, error)
 }

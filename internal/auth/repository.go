@@ -57,6 +57,9 @@ type AuthRepository interface {
 	DeleteSessionByUserIDAndTenant(ctx context.Context, userID, tenantID uuid.UUID) error
 	DeleteSessionsByDeviceAndTenant(ctx context.Context, tenantID, userID uuid.UUID, userAgent, ip string) error
 	GetSessionsByUserIDAndTenant(ctx context.Context, userID, tenantID uuid.UUID) ([]*sqlc.Session, error)
+	GetUserByVerificationTokenAndTenant(ctx context.Context, token string, tenantID uuid.UUID) (*sqlc.User, error)
+	UpdateUserEmailVerified(ctx context.Context, userID uuid.UUID, tenantID uuid.UUID, verified bool) error
+	ClearVerificationToken(ctx context.Context, userID uuid.UUID, tenantID uuid.UUID) error
 }
 
 // UserRepo implements AuthRepository
@@ -517,6 +520,82 @@ func (r *UserRepo) GetSessionsByUserIDAndTenant(ctx context.Context, userID, ten
 	}
 
 	return sessions, nil
+}
+
+// GetUserByVerificationTokenAndTenant retrieves a user by verification token within a specific tenant
+func (r *UserRepo) GetUserByVerificationTokenAndTenant(ctx context.Context, token string, tenantID uuid.UUID) (*sqlc.User, error) {
+	userRow, err := r.queries.GetUserByVerificationTokenAndTenant(ctx, sqlc.GetUserByVerificationTokenAndTenantParams{
+		TenantID:          pgtype.UUID{Bytes: tenantID, Valid: true},
+		VerificationToken: pgtype.Text{String: token, Valid: true},
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "GetUserByVerificationTokenAndTenant").
+			Str("token", token).
+			Str("tenant_id", tenantID.String()).
+			Err(err).
+			Msg("DB query failed")
+		return nil, fmt.Errorf("failed to get user by verification token and tenant: %w", err)
+	}
+
+	user := &sqlc.User{
+		ID:                userRow.ID,
+		TenantID:          userRow.TenantID,
+		Email:             userRow.Email,
+		PasswordHash:      userRow.PasswordHash,
+		Otp:               userRow.Otp,
+		OtpExpiresAt:      userRow.OtpExpiresAt,
+		CreatedAt:         userRow.CreatedAt,
+		UpdatedAt:         userRow.UpdatedAt,
+		EmailVerified:     userRow.EmailVerified,
+		VerificationToken: userRow.VerificationToken,
+	}
+
+	return user, nil
+}
+
+// UpdateUserEmailVerified updates the email verification status of a user within a specific tenant
+func (r *UserRepo) UpdateUserEmailVerified(ctx context.Context, userID uuid.UUID, tenantID uuid.UUID, verified bool) error {
+	err := r.queries.UpdateUserEmailVerified(ctx, sqlc.UpdateUserEmailVerifiedParams{
+		ID:            userID,
+		TenantID:      pgtype.UUID{Bytes: tenantID, Valid: true},
+		EmailVerified: pgtype.Bool{Bool: verified, Valid: true},
+	})
+	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "UpdateUserEmailVerified").
+			Str("user_id", userID.String()).
+			Str("tenant_id", tenantID.String()).
+			Bool("verified", verified).
+			Err(err).
+			Msg("Failed to update email verification status")
+		return fmt.Errorf("failed to update email verification status: %w", err)
+	}
+	return nil
+}
+
+// ClearVerificationToken clears the verification token for a user within a specific tenant
+func (r *UserRepo) ClearVerificationToken(ctx context.Context, userID uuid.UUID, tenantID uuid.UUID) error {
+	err := r.queries.ClearVerificationToken(ctx, sqlc.ClearVerificationTokenParams{
+		ID:       userID,
+		TenantID: pgtype.UUID{Bytes: tenantID, Valid: true},
+	})
+	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "ClearVerificationToken").
+			Str("user_id", userID.String()).
+			Str("tenant_id", tenantID.String()).
+			Err(err).
+			Msg("Failed to clear verification token")
+		return fmt.Errorf("failed to clear verification token: %w", err)
+	}
+	return nil
 }
 
 // GetUserByEmail retrieves a user by their email

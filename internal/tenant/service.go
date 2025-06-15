@@ -74,14 +74,6 @@ func (s *Service) GetTenantByDomain(origin string) (*sqlc.Tenant, error) {
 				Msg("Database connection or schema issue")
 			return nil, fmt.Errorf("database connection error or missing migrations. Please check database connection and run migrations: %w", err)
 		}
-
-		// This is likely a "no rows found" error - actual missing tenant
-		log.Debug().
-			Str("pkg", pkgName).
-			Str("method", "GetTenantByDomain").
-			Str("domain", domain).
-			Err(err).
-			Msg("Tenant not found for domain")
 		return nil, fmt.Errorf("tenant not found for domain %s: %w", domain, err)
 	}
 
@@ -89,13 +81,6 @@ func (s *Service) GetTenantByDomain(origin string) (*sqlc.Tenant, error) {
 	s.mutex.Lock()
 	s.cache[domain] = &tenantData
 	s.mutex.Unlock()
-
-	log.Debug().
-		Str("pkg", pkgName).
-		Str("method", "GetTenantByDomain").
-		Str("domain", domain).
-		Str("tenant_name", tenantData.Name).
-		Msg("Tenant found and cached")
 
 	return &tenantData, nil
 }

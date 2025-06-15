@@ -178,11 +178,11 @@ func TestOTPErrorScenarios(t *testing.T) {
 	})
 
 	t.Run("Verify OTP with wrong session", func(t *testing.T) {
-		// Try to verify OTP without proper session
+		// Try to verify OTP without proper session (no cookies from previous tests)
 		verifyData := url.Values{
 			"otp": {"123456"},
 		}
-		verifyResp := ts.postForm(t, "/verify-otp", verifyData)
+		verifyResp := ts.postFormWithoutCookies(t, "/verify-otp", verifyData)
 		defer verifyResp.Body.Close()
 
 		assert.Equal(t, http.StatusUnauthorized, verifyResp.StatusCode)
@@ -194,7 +194,7 @@ func TestOTPErrorScenarios(t *testing.T) {
 		verifyData := url.Values{
 			"otp": {"123456"}, // Assume this is expired
 		}
-		verifyResp := ts.postForm(t, "/verify-otp", verifyData)
+		verifyResp := ts.postFormWithoutCookies(t, "/verify-otp", verifyData)
 		defer verifyResp.Body.Close()
 
 		// Should fail due to invalid session or expired OTP

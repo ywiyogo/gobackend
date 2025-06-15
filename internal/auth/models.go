@@ -8,23 +8,23 @@ import (
 
 // RegisterRequest represents a registration request
 type RegisterRequest struct {
-	Email    string `json:"email" validate:"required,email"`
-	Password string `json:"password,omitempty" validate:"omitempty,min=8"`
-	OTP      string `json:"otp,omitempty"`
+	Email    string `json:"email" form:"email" validate:"required,email"`
+	Password string `json:"password,omitempty" form:"password" validate:"omitempty,min=8"`
+	OTP      string `json:"otp,omitempty" form:"otp"`
 }
 
 // LoginRequest represents a login request
 type LoginRequest struct {
-	Email    string `json:"email" validate:"required,email"`
-	Password string `json:"password,omitempty"`
-	OTP      string `json:"otp,omitempty"`
+	Email    string `json:"email" form:"email" validate:"required,email"`
+	Password string `json:"password,omitempty" form:"password"`
+	OTP      string `json:"otp,omitempty" form:"otp"`
 }
 
 // VerifyOTPRequest represents an OTP verification request
 type VerifyOTPRequest struct {
-	Email        string `json:"email" validate:"required,email"`
-	OTP          string `json:"otp" validate:"required,len=6"`
-	SessionToken string `json:"session_token"`
+	Email        string `json:"email" form:"email" validate:"required,email"`
+	OTP          string `json:"otp" form:"otp" validate:"required,len=6"`
+	SessionToken string `json:"session_token" form:"session_token"`
 }
 
 // AuthResponse represents a successful authentication response
@@ -64,12 +64,12 @@ type SessionInfo struct {
 
 // LogoutRequest represents a logout request
 type LogoutRequest struct {
-	AllDevices bool `json:"all_devices,omitempty"`
+	AllDevices bool `json:"all_devices,omitempty" form:"all_devices"`
 }
 
 // OTPRequest represents a request to generate OTP
 type OTPRequest struct {
-	Email string `json:"email" validate:"required,email"`
+	Email string `json:"email" form:"email" validate:"required,email"`
 }
 
 // ToUserResponse converts a SQLC User model to UserResponse

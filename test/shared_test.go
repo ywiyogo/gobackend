@@ -344,19 +344,19 @@ func extractOTPFromResponse(responseBody string) string {
 		OTP         string `json:"otp"`
 		RequiresOTP bool   `json:"requires_otp"`
 	}
-	
+
 	if err := json.Unmarshal([]byte(responseBody), &response); err == nil {
 		// If OTP is explicitly in response, return it
 		if response.OTP != "" {
 			return response.OTP
 		}
-		
+
 		// For testing purposes, return a predictable OTP only when requires_otp is true
 		if response.RequiresOTP && (os.Getenv("ENV") == "test" || os.Getenv("ENV") == "development") {
 			return "123456"
 		}
 	}
-	
+
 	return ""
 }
 
@@ -375,12 +375,39 @@ func extractCSRFTokenFromResponse(responseBody string) string {
 	var response2 struct {
 		CSRFToken string `json:"CSRFToken"`
 	}
-	
+
 	if err := json.Unmarshal([]byte(responseBody), &response2); err == nil && response2.CSRFToken != "" {
 		return response2.CSRFToken
 	}
 
 	return ""
+}
+
+// clearCookies clears all cookies from the test client
+func (ts *TestServer) clearCookies() {
+	jar, _ := cookiejar.New(nil)
+	ts.Client.Jar = jar
+}
+
+// postFormWithoutCookies makes a POST request with form data without any existing cookies
+func (ts *TestServer) postFormWithoutCookies(t *testing.T, endpoint string, data url.Values) *http.Response {
+	t.Helper()
+
+	// Create a temporary client without cookies
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	req, err := http.NewRequest("POST", ts.Server.URL+endpoint, strings.NewReader(data.Encode()))
+	require.NoError(t, err)
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", fmt.Sprintf("https://%s", ts.DefaultTenant.Domain))
+
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+
+	return resp
 }
 
 // getResponseBody reads and returns the response body as string

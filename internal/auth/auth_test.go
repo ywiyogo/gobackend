@@ -178,7 +178,23 @@ func (m *MockRepository) DeleteSessionsByDeviceAndTenant(ctx context.Context, te
 }
 
 func (m *MockRepository) GetSessionsByUserIDAndTenant(ctx context.Context, userID, tenantID uuid.UUID) ([]*sqlc.Session, error) {
-	return nil, nil
+	args := m.Called(ctx, userID, tenantID)
+	return args.Get(0).([]*sqlc.Session), args.Error(1)
+}
+
+func (m *MockRepository) GetUserByVerificationTokenAndTenant(ctx context.Context, token string, tenantID uuid.UUID) (*sqlc.User, error) {
+	args := m.Called(ctx, token, tenantID)
+	return args.Get(0).(*sqlc.User), args.Error(1)
+}
+
+func (m *MockRepository) UpdateUserEmailVerified(ctx context.Context, userID uuid.UUID, tenantID uuid.UUID, verified bool) error {
+	args := m.Called(ctx, userID, tenantID, verified)
+	return args.Error(0)
+}
+
+func (m *MockRepository) ClearVerificationToken(ctx context.Context, userID uuid.UUID, tenantID uuid.UUID) error {
+	args := m.Called(ctx, userID, tenantID)
+	return args.Error(0)
 }
 
 // AuthTestSuite organizes all auth-related tests

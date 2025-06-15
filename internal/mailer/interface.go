@@ -7,6 +7,9 @@ type Mailer interface {
 	// SendOTP sends an OTP verification email to the specified recipient
 	SendOTP(toEmail, toName, otpCode string, expiryTime time.Time, tenantName string) error
 
+	// SendVerificationEmail sends a verification email with a token
+	SendVerificationEmail(toEmail, toName, token, appName string) error
+
 	// TestConnection tests the connection to the email service
 	TestConnection() error
 

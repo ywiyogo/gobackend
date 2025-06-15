@@ -231,3 +231,19 @@ WHERE tenant_id = $1;
 SELECT COUNT(*) as session_count
 FROM sessions
 WHERE tenant_id = $1;
+
+-- name: GetUserByVerificationTokenAndTenant :one
+SELECT id, tenant_id, email, password_hash, otp, otp_expires_at, created_at, updated_at, email_verified, verification_token
+FROM users
+WHERE tenant_id = $1 AND verification_token = $2
+LIMIT 1;
+
+-- name: UpdateUserEmailVerified :exec
+UPDATE users
+SET email_verified = $3
+WHERE id = $1 AND tenant_id = $2;
+
+-- name: ClearVerificationToken :exec
+UPDATE users
+SET verification_token = NULL
+WHERE id = $1 AND tenant_id = $2;

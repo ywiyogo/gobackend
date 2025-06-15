@@ -374,6 +374,68 @@ func (s *Service) buildMessage(toEmail, toName, subject, plainContent, htmlConte
 	return message.String()
 }
 
+// SendVerificationEmail sends a verification email with a token
+func (s *Service) SendVerificationEmail(toEmail, toName, token, appName string) error {
+	subject := "Verify Your Email Address"
+
+	emailData := EmailData{
+		ToEmail:     toEmail,
+		ToName:      toName,
+		Subject:     subject,
+		OTPCode:     token, // Reusing OTPCode field for the token
+		AppName:     appName,
+		TenantName:  appName,
+		CompanyName: appName,
+	}
+
+	// Generate HTML content
+	htmlContent, err := s.renderTemplate("otp", emailData) // Reusing OTP template for now
+	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("template", "otp").
+			Err(err).
+			Msg("Failed to render HTML template for verification email")
+
+		// Fallback to plain text
+		return s.sendPlainTextVerificationEmail(emailData)
+	}
+
+	// Generate plain text content for multipart
+	plainContent, err := s.renderTemplate("otp_plain", emailData) // Reusing OTP plain template
+	if err != nil {
+		log.Warn().
+			Str("pkg", pkgName).
+			Str("template", "otp_plain").
+			Err(err).
+			Msg("Failed to render plain text template for verification email, using HTML only")
+		plainContent = fmt.Sprintf("Your verification token is: %s", token)
+	}
+
+	// Send multipart email
+	return s.sendEmail(toEmail, toName, subject, plainContent, htmlContent)
+}
+
+// sendPlainTextVerificationEmail sends a plain text verification email as fallback
+func (s *Service) sendPlainTextVerificationEmail(emailData EmailData) error {
+	plainContent, err := s.renderTemplate("otp_plain", emailData) // Reusing OTP plain template
+	if err != nil {
+		// Ultimate fallback - simple text
+		plainContent = fmt.Sprintf(`
+Email Verification Token
+
+Your verification token is: %s
+
+If you didn't request this, please ignore this email.
+
+Best regards,
+%s Team
+`, emailData.OTPCode, emailData.CompanyName)
+	}
+
+	return s.sendEmail(emailData.ToEmail, emailData.ToName, emailData.Subject, plainContent, "")
+}
+
 // TestConnection tests the SMTP connection
 func (s *Service) TestConnection() error {
 	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)

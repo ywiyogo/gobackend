@@ -93,45 +93,15 @@ go mod download
 
 ### Docker-based Testing (Recommended)
 
-#### Quick Start
-```bash
-# Setup Docker environment and run integration tests
-./test/run-docker.sh
 
-# Run specific test types
-./test/run-docker.sh integration
-./test/run-docker.sh integration-coverage
-./test/run-docker.sh unit
-
-# Run with OTP enabled
-./test/run-docker.sh -o integration
-```
-
-#### Advanced Docker Usage
-```bash
-# Setup environment only (for manual testing)
-./test/run-docker.sh -s
-
-# Run specific test patterns
-./test/run-docker.sh -p TestAuthenticationWorkflowWithPassword
-
-# Keep Docker services running after tests
-./test/run-docker.sh -k integration
-
-# Cleanup Docker services only
-./test/run-docker.sh -c
-
-# Get help
-./test/run-docker.sh --help
-```
-
-#### Makefile Targets
 ```bash
 # Docker-based integration tests
-make test-integration-docker
-make test-integration-docker-verbose
-make test-integration-docker-coverage
-make test-docker-otp
+make integration-test
+
+TEST_NAME="TestOTPErrorScenarios" make integration-test-single-verbose
+
+make integration-test-verbose
+make integration-test-coverage
 
 # Setup and cleanup
 make setup-test-env

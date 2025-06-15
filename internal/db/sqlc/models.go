@@ -36,12 +36,14 @@ type Tenant struct {
 }
 
 type User struct {
-	ID           uuid.UUID          `json:"id"`
-	Email        string             `json:"email"`
-	PasswordHash pgtype.Text        `json:"password_hash"`
-	Otp          pgtype.Text        `json:"otp"`
-	OtpExpiresAt pgtype.Timestamptz `json:"otp_expires_at"`
-	CreatedAt    time.Time          `json:"created_at"`
-	UpdatedAt    time.Time          `json:"updated_at"`
-	TenantID     pgtype.UUID        `json:"tenant_id"`
+	ID                uuid.UUID          `json:"id"`
+	Email             string             `json:"email"`
+	PasswordHash      pgtype.Text        `json:"password_hash"`
+	Otp               pgtype.Text        `json:"otp"`
+	OtpExpiresAt      pgtype.Timestamptz `json:"otp_expires_at"`
+	EmailVerified     pgtype.Bool        `json:"email_verified"`
+	VerificationToken pgtype.Text        `json:"verification_token"`
+	CreatedAt         time.Time          `json:"created_at"`
+	UpdatedAt         time.Time          `json:"updated_at"`
+	TenantID          pgtype.UUID        `json:"tenant_id"`
 }

@@ -62,15 +62,56 @@ func (m *MockService) SendOTP(toEmail, toName, otpCode string, expiryTime time.T
 		Msg("Mock email sent - OTP verification code")
 
 	// Print to console for easy development testing
-	fmt.Printf("\n" + strings.Repeat("=", 60) + "\n")
+	separatorLine := strings.Repeat("=", 60)
+	fmt.Printf("\n%s\n", separatorLine)
 	fmt.Printf("📧 MOCK EMAIL SENT\n")
-	fmt.Printf(strings.Repeat("=", 60) + "\n")
+	fmt.Printf("%s\n", separatorLine)
 	fmt.Printf("To: %s <%s>\n", toName, toEmail)
 	fmt.Printf("Subject: %s\n", mockEmail.Subject)
 	fmt.Printf("Tenant: %s\n", tenantName)
 	fmt.Printf("OTP Code: %s\n", otpCode)
 	fmt.Printf("Expires: %s\n", expiryTime.Format("2006-01-02 15:04:05 MST"))
-	fmt.Printf(strings.Repeat("=", 60) + "\n\n")
+	fmt.Printf("%s\n\n", separatorLine)
+
+	return nil
+}
+
+// SendVerificationEmail simulates sending a verification email by logging it and storing it in memory
+func (m *MockService) SendVerificationEmail(toEmail, toName, token, appName string) error {
+	if !m.enabled {
+		return fmt.Errorf("mock mailer service is disabled")
+	}
+
+	mockEmail := MockEmail{
+		ToEmail:    toEmail,
+		ToName:     toName,
+		Subject:    "Verify Your Email Address",
+		OTPCode:    token, // Reusing OTPCode field for token
+		TenantName: appName,
+		SentAt:     time.Now(),
+	}
+
+	m.emails = append(m.emails, mockEmail)
+
+	log.Info().
+		Str("pkg", pkgName).
+		Str("service", "mock").
+		Str("to_email", toEmail).
+		Str("to_name", toName).
+		Str("token", token).
+		Str("app_name", appName).
+		Msg("Mock email sent - Email verification token")
+
+	// Print to console for easy development testing
+	separatorLine := strings.Repeat("=", 60)
+	fmt.Printf("\n%s\n", separatorLine)
+	fmt.Printf("📧 MOCK EMAIL SENT\n")
+	fmt.Printf("%s\n", separatorLine)
+	fmt.Printf("To: %s <%s>\n", toName, toEmail)
+	fmt.Printf("Subject: %s\n", mockEmail.Subject)
+	fmt.Printf("App: %s\n", appName)
+	fmt.Printf("Verification Token: %s\n", token)
+	fmt.Printf("%s\n\n", separatorLine)
 
 	return nil
 }

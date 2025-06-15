@@ -87,16 +87,6 @@ func TenantMiddleware(tenantService *Service) func(http.Handler) http.Handler {
 			// Add tenant to request context
 			ctx := context.WithValue(r.Context(), TenantContextKey, tenant)
 			r = r.WithContext(ctx)
-
-			log.Debug().
-				Str("pkg", middlewarePkgName).
-				Str("method", "TenantMiddleware").
-				Str("tenant_id", tenant.ID.String()).
-				Str("tenant_name", tenant.Name).
-				Str("domain", tenant.Domain).
-				Str("path", r.URL.Path).
-				Msg("Tenant resolved successfully")
-
 			// Call the next handler
 			next.ServeHTTP(w, r)
 		})

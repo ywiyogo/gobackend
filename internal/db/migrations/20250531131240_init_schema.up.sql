@@ -9,6 +9,8 @@ CREATE TABLE users (
     password_hash TEXT,
     otp TEXT,
     otp_expires_at TIMESTAMPTZ,
+    email_verified BOOLEAN DEFAULT FALSE,
+    verification_token TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW (),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW ()
 );
