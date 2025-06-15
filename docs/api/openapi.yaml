@@ -1,0 +1,973 @@
+openapi: 3.0.3
+info:
+  title: Go Backend API
+  description: |
+    A production-ready multi-tenant REST API built with Go's standard library.
+
+    ## Features
+    - Multi-tenant architecture with domain-based routing
+    - Dual authentication modes (password-based and OTP-based)
+    - Session management with CSRF protection
+    - Notes management system
+    - Comprehensive health checks
+    - Tenant administration
+
+    ## Authentication
+    This API uses session-based authentication with CSRF protection. All protected endpoints require:
+    - Valid session cookie
+    - CSRF token in X-CSRF-Token header
+    - Tenant identification via Origin header
+
+    ## Multi-Tenant Support
+    All requests must include the tenant's domain in the Origin header to identify the tenant context.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Development server
+  - url: https://api.example.com
+    description: Production server
+
+paths:
+  /:
+    get:
+      tags:
+        - General
+      summary: Home endpoint
+      description: Simple greeting endpoint
+      responses:
+        '200':
+          description: Greeting message
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Hello from Backend! We are in /. How are you?"
+
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Comprehensive health check
+      description: Performs comprehensive health checks including database connectivity and tenant table status
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '206':
+          description: Service is partially healthy (degraded)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness check
+      description: Simple readiness probe for container orchestration
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "OK"
+        '503':
+          description: Service is not ready
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /live:
+    get:
+      tags:
+        - Health
+      summary: Liveness check
+      description: Simple liveness probe for container orchestration
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "OK"
+
+  /register:
+    post:
+      tags:
+        - Authentication
+      summary: Register new user
+      description: Creates a new user account in the specified tenant
+      parameters:
+        - $ref: '#/components/parameters/OriginHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /login:
+    post:
+      tags:
+        - Authentication
+      summary: Login user
+      description: Authenticates a user and creates a session
+      parameters:
+        - $ref: '#/components/parameters/OriginHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /verify-otp:
+    post:
+      tags:
+        - Authentication
+      summary: Verify OTP code
+      description: Verifies an OTP code sent to the user's email
+      parameters:
+        - $ref: '#/components/parameters/OriginHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyOTPRequest'
+      responses:
+        '200':
+          description: OTP verified successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Invalid OTP
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /logout:
+    post:
+      tags:
+        - Authentication
+      summary: Logout user
+      description: Terminates the user's session
+      security:
+        - SessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OriginHeader'
+        - $ref: '#/components/parameters/CSRFTokenHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Logout successful"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /dashboard:
+    post:
+      tags:
+        - Protected
+      summary: User dashboard
+      description: Returns user dashboard information (protected endpoint example)
+      security:
+        - SessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OriginHeader'
+        - $ref: '#/components/parameters/CSRFTokenHeader'
+      responses:
+        '200':
+          description: Dashboard data retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/UserResponse'
+                  message:
+                    type: string
+                    example: "Dashboard data retrieved successfully"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/notes:
+    get:
+      tags:
+        - Notes
+      summary: Get all notes
+      description: Retrieves all notes
+      parameters:
+        - $ref: '#/components/parameters/OriginHeader'
+      responses:
+        '200':
+          description: Notes retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Note'
+    post:
+      tags:
+        - Notes
+      summary: Create note
+      description: Creates a new note
+      parameters:
+        - $ref: '#/components/parameters/OriginHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNoteRequest'
+      responses:
+        '201':
+          description: Note created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/notes/{id}:
+    get:
+      tags:
+        - Notes
+      summary: Get note by ID
+      description: Retrieves a specific note by its ID
+      parameters:
+        - $ref: '#/components/parameters/OriginHeader'
+        - name: id
+          in: path
+          required: true
+          description: Note ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Note retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+        '404':
+          description: Note not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags:
+        - Notes
+      summary: Update note
+      description: Updates an existing note
+      parameters:
+        - $ref: '#/components/parameters/OriginHeader'
+        - name: id
+          in: path
+          required: true
+          description: Note ID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNoteRequest'
+      responses:
+        '200':
+          description: Note updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+        '404':
+          description: Note not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - Notes
+      summary: Delete note
+      description: Deletes a specific note
+      parameters:
+        - $ref: '#/components/parameters/OriginHeader'
+        - name: id
+          in: path
+          required: true
+          description: Note ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Note deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Note deleted successfully"
+        '404':
+          description: Note not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/tenants:
+    get:
+      tags:
+        - Tenant Management
+      summary: Get all tenants
+      description: Retrieves all tenants (admin endpoint)
+      responses:
+        '200':
+          description: Tenants retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantsListResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+        - Tenant Management
+      summary: Create tenant
+      description: Creates a new tenant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTenantRequest'
+      responses:
+        '201':
+          description: Tenant created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/tenants/{id}:
+    get:
+      tags:
+        - Tenant Management
+      summary: Get tenant by ID
+      description: Retrieves a specific tenant
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Tenant ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tenant retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantResponse'
+        '404':
+          description: Tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags:
+        - Tenant Management
+      summary: Update tenant
+      description: Updates an existing tenant
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Tenant ID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTenantRequest'
+      responses:
+        '200':
+          description: Tenant updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantResponse'
+        '404':
+          description: Tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - Tenant Management
+      summary: Delete tenant
+      description: Deletes a tenant
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Tenant ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tenant deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Tenant deleted successfully"
+        '404':
+          description: Tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    SessionAuth:
+      type: apiKey
+      in: cookie
+      name: session_token
+      description: Session-based authentication using HTTP-only cookies
+
+  parameters:
+    OriginHeader:
+      name: Origin
+      in: header
+      required: true
+      description: Tenant domain for multi-tenant routing
+      schema:
+        type: string
+        example: "myapp.local"
+    CSRFTokenHeader:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      description: CSRF token for protected endpoints
+      schema:
+        type: string
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: "user@example.com"
+        password:
+          type: string
+          minLength: 8
+          description: User's password (required if OTP is disabled)
+          example: "password123"
+        otp:
+          type: string
+          pattern: '^[0-9]{6}$'
+          description: 6-digit OTP code (required if OTP is enabled)
+          example: "123456"
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: "user@example.com"
+        password:
+          type: string
+          description: User's password (required if OTP is disabled)
+          example: "password123"
+        otp:
+          type: string
+          pattern: '^[0-9]{6}$'
+          description: 6-digit OTP code (required if OTP is enabled)
+          example: "123456"
+
+    VerifyOTPRequest:
+      type: object
+      required:
+        - email
+        - otp
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: "user@example.com"
+        otp:
+          type: string
+          pattern: '^[0-9]{6}$'
+          description: 6-digit OTP code
+          example: "123456"
+        session_token:
+          type: string
+          description: Temporary session token from registration/login
+          example: "temp_session_token_123"
+
+    LogoutRequest:
+      type: object
+      properties:
+        all_devices:
+          type: boolean
+          description: If true, terminates all sessions for the user
+          default: false
+          example: false
+
+    AuthResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/UserResponse'
+        session_token:
+          type: string
+          description: Session token for authentication
+          example: "session_token_abc123"
+        csrf_token:
+          type: string
+          description: CSRF token for protected requests
+          example: "csrf_token_def456"
+        expires_at:
+          type: string
+          format: date-time
+          description: Session expiration timestamp
+          example: "2024-01-16T10:30:00Z"
+        requires_otp:
+          type: boolean
+          description: Whether OTP verification is required
+          example: false
+        message:
+          type: string
+          description: Response message
+          example: "Login successful"
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: User ID
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: "user@example.com"
+        created_at:
+          type: string
+          format: date-time
+          description: User creation timestamp
+          example: "2024-01-15T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: User last update timestamp
+          example: "2024-01-15T10:30:00Z"
+
+    Note:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Note ID
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        author:
+          type: string
+          description: Note author
+          example: "John Doe"
+        text:
+          type: string
+          description: Note content
+          example: "This is a sample note"
+
+    CreateNoteRequest:
+      type: object
+      required:
+        - author
+        - text
+      properties:
+        author:
+          type: string
+          description: Note author
+          example: "John Doe"
+        text:
+          type: string
+          description: Note content
+          example: "This is a new note"
+
+    UpdateNoteRequest:
+      type: object
+      required:
+        - author
+        - text
+      properties:
+        author:
+          type: string
+          description: Note author
+          example: "John Doe"
+        text:
+          type: string
+          description: Updated note content
+          example: "This note has been updated"
+
+    TenantSettings:
+      type: object
+      properties:
+        otp_enabled:
+          type: boolean
+          description: Whether OTP authentication is enabled
+          default: false
+          example: true
+        session_timeout_minutes:
+          type: integer
+          description: Session timeout in minutes
+          default: 1440
+          example: 1440
+        allowed_origins:
+          type: array
+          items:
+            type: string
+          description: Allowed origins for CORS
+          example: ["https://example.com", "https://app.example.com"]
+        rate_limit_per_minute:
+          type: integer
+          description: Rate limit per minute
+          default: 60
+          example: 60
+        require_email_verification:
+          type: boolean
+          description: Whether email verification is required
+          default: false
+          example: false
+        custom_branding:
+          type: object
+          additionalProperties:
+            type: string
+          description: Custom branding settings
+          example:
+            logo_url: "https://example.com/logo.png"
+            primary_color: "#007bff"
+
+    CreateTenantRequest:
+      type: object
+      required:
+        - name
+        - domain
+        - admin_email
+        - is_active
+      properties:
+        name:
+          type: string
+          description: Tenant name
+          example: "Example Company"
+        domain:
+          type: string
+          description: Tenant domain
+          example: "example.com"
+        subdomain:
+          type: string
+          description: Subdomain prefix
+          example: "app"
+        admin_email:
+          type: string
+          format: email
+          description: Admin email address
+          example: "admin@example.com"
+        is_active:
+          type: boolean
+          description: Whether tenant is active
+          example: true
+        settings:
+          $ref: '#/components/schemas/TenantSettings'
+
+    UpdateTenantRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Tenant name
+          example: "Updated Company Name"
+        domain:
+          type: string
+          description: Tenant domain
+          example: "newdomain.com"
+        subdomain:
+          type: string
+          description: Subdomain prefix
+          example: "app"
+        admin_email:
+          type: string
+          format: email
+          description: Admin email address
+          example: "admin@newdomain.com"
+        is_active:
+          type: boolean
+          description: Whether tenant is active
+          example: true
+        settings:
+          $ref: '#/components/schemas/TenantSettings'
+
+    TenantResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Tenant ID
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        name:
+          type: string
+          description: Tenant name
+          example: "Example Company"
+        domain:
+          type: string
+          description: Tenant domain
+          example: "example.com"
+        subdomain:
+          type: string
+          description: Subdomain prefix
+          example: "app"
+        api_key:
+          type: string
+          description: Tenant API key
+          example: "tenant_api_key_123"
+        settings:
+          type: object
+          additionalProperties: true
+          description: Tenant settings
+          example:
+            otp_enabled: true
+            session_timeout_minutes: 1440
+        admin_email:
+          type: string
+          format: email
+          description: Admin email address
+          example: "admin@example.com"
+        is_active:
+          type: boolean
+          description: Whether tenant is active
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          description: Tenant creation timestamp
+          example: "2024-01-15T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Tenant last update timestamp
+          example: "2024-01-15T10:30:00Z"
+
+    TenantsListResponse:
+      type: object
+      properties:
+        tenants:
+          type: array
+          items:
+            $ref: '#/components/schemas/TenantResponse'
+        total:
+          type: integer
+          description: Total number of tenants
+          example: 5
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+          description: Overall health status
+          example: "healthy"
+        timestamp:
+          type: string
+          format: date-time
+          description: Health check timestamp
+          example: "2024-01-15T10:30:00Z"
+        checks:
+          type: object
+          additionalProperties:
+            type: string
+          description: Individual health check results
+          example:
+            database: "healthy"
+            tenants_table: "healthy"
+        message:
+          type: string
+          description: Additional health information
+          example: "All systems operational"
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: "Invalid request"
+        code:
+          type: string
+          description: Error code
+          example: "INVALID_REQUEST"
+        details:
+          type: object
+          additionalProperties:
+            type: string
+          description: Additional error details
+          example:
+            field: "email"
+            reason: "Invalid format"
+
+tags:
+  - name: General
+    description: General endpoints
+  - name: Health
+    description: Health check endpoints
+  - name: Authentication
+    description: User authentication endpoints
+  - name: Protected
+    description: Protected endpoints requiring authentication
+  - name: Notes
+    description: Notes management endpoints
+  - name: Tenant Management
+    description: Tenant administration endpoints
