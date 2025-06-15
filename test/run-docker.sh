@@ -77,40 +77,205 @@ setup_docker() {
     ./test/setup-docker.sh
 }
 
+# Function to parse test output and extract failed tests
+parse_test_results() {
+    local output_file="$1"
+    local failed_tests=()
+    local failed_subtests=()
+    local passed_tests=()
+    local passed_subtests=()
+    local skipped_tests=()
+    local skipped_subtests=()
+    local error_details=()
+    local total_time=""
+
+    # Extract tests, sub-tests, and error details
+    local current_failure=""
+    local collecting_error=false
+
+    while IFS= read -r line; do
+        # Check for test results
+        if [[ $line =~ ^---\ FAIL:\ (.+)\ \(([0-9.]+s)\)$ ]]; then
+            local test_name="${BASH_REMATCH[1]}"
+            local test_time="${BASH_REMATCH[2]}"
+            if [[ $test_name == *"/"* ]]; then
+                failed_subtests+=("$test_name ($test_time)")
+            else
+                failed_tests+=("$test_name ($test_time)")
+            fi
+            current_failure="$test_name"
+            collecting_error=true
+        elif [[ $line =~ ^---\ PASS:\ (.+)\ \(([0-9.]+s)\)$ ]]; then
+            local test_name="${BASH_REMATCH[1]}"
+            local test_time="${BASH_REMATCH[2]}"
+            if [[ $test_name == *"/"* ]]; then
+                passed_subtests+=("$test_name ($test_time)")
+            else
+                passed_tests+=("$test_name ($test_time)")
+            fi
+            collecting_error=false
+        elif [[ $line =~ ^---\ SKIP:\ (.+)\ \(([0-9.]+s)\)$ ]]; then
+            local test_name="${BASH_REMATCH[1]}"
+            local test_time="${BASH_REMATCH[2]}"
+            if [[ $test_name == *"/"* ]]; then
+                skipped_subtests+=("$test_name ($test_time)")
+            else
+                skipped_tests+=("$test_name ($test_time)")
+            fi
+            collecting_error=false
+        elif [[ $line =~ ^FAIL$ ]] || [[ $line =~ ^PASS$ ]]; then
+            collecting_error=false
+        elif [[ $line =~ ^(FAIL|ok)[[:space:]]+[^[:space:]]+[[:space:]]+([0-9.]+s)$ ]]; then
+            total_time="${BASH_REMATCH[2]}"
+            collecting_error=false
+        elif [[ "$collecting_error" == "true" ]] && [[ $line =~ "Error Trace:" ]]; then
+            # Collect error trace information
+            local next_line=""
+            local error_msg=""
+            read -r next_line
+            if [[ $next_line =~ Error:[[:space:]]+(.+)$ ]]; then
+                error_msg="${BASH_REMATCH[1]}"
+                error_details+=("$current_failure: $error_msg")
+            fi
+        fi
+    done < "$output_file"
+
+    # Print summary
+    echo ""
+    echo "========================================"
+    echo "           TEST RESULTS SUMMARY        "
+    echo "========================================"
+
+    local total_passed=$((${#passed_tests[@]} + ${#passed_subtests[@]}))
+    local total_failed=$((${#failed_tests[@]} + ${#failed_subtests[@]}))
+    local total_skipped=$((${#skipped_tests[@]} + ${#skipped_subtests[@]}))
+
+    if [ $total_passed -gt 0 ]; then
+        echo ""
+        print_success "PASSED (${total_passed}):"
+        for test in "${passed_tests[@]}"; do
+            echo "  ✅ $test"
+        done
+        for test in "${passed_subtests[@]}"; do
+            echo "  ✅ $test"
+        done
+    fi
+
+    if [ $total_skipped -gt 0 ]; then
+        echo ""
+        print_warning "SKIPPED (${total_skipped}):"
+        for test in "${skipped_tests[@]}"; do
+            echo "  ⏭️  $test"
+        done
+        for test in "${skipped_subtests[@]}"; do
+            echo "  ⏭️  $test"
+        done
+    fi
+
+    if [ $total_failed -gt 0 ]; then
+        echo ""
+        print_error "FAILED (${total_failed}):"
+        for test in "${failed_tests[@]}"; do
+            echo "  ❌ $test"
+        done
+        for test in "${failed_subtests[@]}"; do
+            echo "  ❌ $test"
+        done
+
+        # Show error details if available
+        if [ ${#error_details[@]} -gt 0 ]; then
+            echo ""
+            print_error "ERROR DETAILS:"
+            for error in "${error_details[@]}"; do
+                echo "  🔍 $error"
+            done
+        fi
+
+        echo ""
+        print_error "🚨 ${total_failed} test(s) failed! Check the output above for details."
+        echo ""
+        print_status "💡 Quick debugging tips:"
+        echo "   • Look for 'Error Trace:' lines in the output above"
+        echo "   • Check assertion failures and expected vs actual values"
+        echo "   • Review any error logs or stack traces"
+        if [ ${#failed_subtests[@]} -gt 0 ]; then
+            echo "   • Focus on failed sub-tests to identify specific issues"
+        fi
+        if [ -n "$total_time" ]; then
+            echo "   ⏱️  Total test time: $total_time"
+        fi
+        return 1
+    else
+        echo ""
+        print_success "🎉 All tests passed!"
+        if [ $total_passed -gt 1 ]; then
+            echo "   📊 Total: $total_passed tests completed successfully"
+        fi
+        if [ -n "$total_time" ]; then
+            echo "   ⏱️  Total time: $total_time"
+        fi
+        return 0
+    fi
+}
+
 # Function to run tests
 run_tests() {
     local test_type="$1"
     local test_pattern="$2"
+    local temp_output=$(mktemp)
 
     print_status "Running $test_type tests..."
 
     cd "$(dirname "$0")/.."
 
+    # Run tests and capture output
+    local test_result=0
     case "$test_type" in
         "unit")
-            make test-unit
+            make test-unit 2>&1 | tee "$temp_output"
+            test_result=${PIPESTATUS[0]}
             ;;
         "integration")
             if [ -n "$test_pattern" ]; then
-                go test ./test/... -v -run "$test_pattern"
+                go test ./test/... -v -run "$test_pattern" 2>&1 | tee "$temp_output"
+                test_result=${PIPESTATUS[0]}
             else
-                go test ./test/... -v
+                go test ./test/... -v 2>&1 | tee "$temp_output"
+                test_result=${PIPESTATUS[0]}
             fi
             ;;
         "integration-short")
-            make test-integration-short
+            make test-integration-short 2>&1 | tee "$temp_output"
+            test_result=${PIPESTATUS[0]}
             ;;
         "integration-coverage")
-            make test-integration-coverage
+            make test-integration-coverage 2>&1 | tee "$temp_output"
+            test_result=${PIPESTATUS[0]}
             ;;
         "all")
-            make test
+            make test 2>&1 | tee "$temp_output"
+            test_result=${PIPESTATUS[0]}
             ;;
         *)
             print_error "Unknown test type: $test_type"
+            rm -f "$temp_output"
             return 1
             ;;
     esac
+
+    # Parse and display test results summary
+    parse_test_results "$temp_output"
+    local parse_result=$?
+
+    # Clean up temporary file
+    rm -f "$temp_output"
+
+    # Return appropriate exit code
+    if [ $test_result -ne 0 ] || [ $parse_result -ne 0 ]; then
+        return 1
+    fi
+
+    return 0
 }
 
 # Main execution function
@@ -230,7 +395,7 @@ main() {
         source .env
         set +a
     fi
-    
+
     # Override DB_HOST for localhost access
     export DB_HOST=localhost
     export DB_USER="${DB_USER}"
