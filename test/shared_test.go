@@ -17,6 +17,7 @@ import (
 	"gobackend/internal/api"
 	"gobackend/internal/auth"
 	"gobackend/internal/db/sqlc"
+	"gobackend/internal/mailer"
 	"gobackend/internal/tenant"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -76,10 +77,15 @@ func setupTestServerWithOTP(t *testing.T, otpEnabled bool) *TestServer {
 
 	queries := sqlc.New(pool)
 	repo := auth.NewAuthRepository(queries)
-	authService := auth.NewService(repo)
 
 	// Initialize tenant service
 	tenantService := tenant.NewService(queries)
+
+	// Initialize mailer service (use mock for testing)
+	mailerService := mailer.NewMockMailer()
+
+	// Initialize auth service with tenant service
+	authService := auth.NewServiceWithTenant(repo, mailerService, tenantService)
 
 	// Create router with the same setup as main.go
 	router := api.NewRouter(authService)
@@ -103,6 +109,15 @@ func setupTestServerWithOTP(t *testing.T, otpEnabled bool) *TestServer {
 		},
 		"POST /verify-otp": func(w http.ResponseWriter, r *http.Request) {
 			tenantMiddleware(http.HandlerFunc(userHandler.VerifyOTP)).ServeHTTP(w, r)
+		},
+		"GET /verify-email": func(w http.ResponseWriter, r *http.Request) {
+			tenantMiddleware(http.HandlerFunc(userHandler.VerifyEmail)).ServeHTTP(w, r)
+		},
+		"GET /verify-email-otp": func(w http.ResponseWriter, r *http.Request) {
+			tenantMiddleware(http.HandlerFunc(userHandler.VerifyEmailWithOTP)).ServeHTTP(w, r)
+		},
+		"POST /verify-email-otp": func(w http.ResponseWriter, r *http.Request) {
+			tenantMiddleware(http.HandlerFunc(userHandler.VerifyEmailWithOTP)).ServeHTTP(w, r)
 		},
 	}
 	router.AppendHandlerFromMap(routesAuth)
@@ -262,6 +277,25 @@ func (ts *TestServer) postJSON(t *testing.T, endpoint string, data interface{}) 
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Origin", fmt.Sprintf("https://%s", ts.DefaultTenant.Domain))
+
+	resp, err := ts.Client.Do(req)
+	require.NoError(t, err)
+
+	return resp
+}
+
+// postJSONWithOrigin makes a POST JSON request with a specific Origin header
+func (ts *TestServer) postJSONWithOrigin(t *testing.T, endpoint string, data interface{}, origin string) *http.Response {
+	t.Helper()
+
+	jsonData, err := json.Marshal(data)
+	require.NoError(t, err)
+
+	req, err := http.NewRequest("POST", ts.Server.URL+endpoint, bytes.NewBuffer(jsonData))
+	require.NoError(t, err)
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", origin)
 
 	resp, err := ts.Client.Do(req)
 	require.NoError(t, err)

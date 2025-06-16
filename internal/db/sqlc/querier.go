@@ -44,9 +44,10 @@ type Querier interface {
 	GetTenantByID(ctx context.Context, id uuid.UUID) (Tenant, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	// Tenant-aware user queries
-	GetUserByEmailAndTenant(ctx context.Context, arg GetUserByEmailAndTenantParams) (GetUserByEmailAndTenantRow, error)
-	GetUserByIDAndTenant(ctx context.Context, arg GetUserByIDAndTenantParams) (GetUserByIDAndTenantRow, error)
-	GetUserByVerificationTokenAndTenant(ctx context.Context, arg GetUserByVerificationTokenAndTenantParams) (GetUserByVerificationTokenAndTenantRow, error)
+	GetUserByEmailAndTenant(ctx context.Context, arg GetUserByEmailAndTenantParams) (User, error)
+	GetUserByIDAndTenant(ctx context.Context, arg GetUserByIDAndTenantParams) (User, error)
+	GetUserByOTPAndTenant(ctx context.Context, arg GetUserByOTPAndTenantParams) (User, error)
+	GetUserByVerificationTokenAndTenant(ctx context.Context, arg GetUserByVerificationTokenAndTenantParams) (User, error)
 	GetUserIDBySessionToken(ctx context.Context, sessionToken string) (uuid.UUID, error)
 	GetUserOTP(ctx context.Context, id uuid.UUID) (GetUserOTPRow, error)
 	GetUserOTPInTenant(ctx context.Context, arg GetUserOTPInTenantParams) (GetUserOTPInTenantRow, error)

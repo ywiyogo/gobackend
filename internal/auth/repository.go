@@ -58,6 +58,7 @@ type AuthRepository interface {
 	DeleteSessionsByDeviceAndTenant(ctx context.Context, tenantID, userID uuid.UUID, userAgent, ip string) error
 	GetSessionsByUserIDAndTenant(ctx context.Context, userID, tenantID uuid.UUID) ([]*sqlc.Session, error)
 	GetUserByVerificationTokenAndTenant(ctx context.Context, token string, tenantID uuid.UUID) (*sqlc.User, error)
+	GetUserByOTPAndTenant(ctx context.Context, otp string, tenantID uuid.UUID) (*sqlc.User, error)
 	UpdateUserEmailVerified(ctx context.Context, userID uuid.UUID, tenantID uuid.UUID, verified bool) error
 	ClearVerificationToken(ctx context.Context, userID uuid.UUID, tenantID uuid.UUID) error
 }
@@ -120,7 +121,7 @@ func (r *UserRepo) ValidateOTP(ctx context.Context, userID uuid.UUID, otp string
 
 // GetUserByEmailAndTenant retrieves a user by email within a specific tenant
 func (r *UserRepo) GetUserByEmailAndTenant(ctx context.Context, email string, tenantID uuid.UUID) (*sqlc.User, error) {
-	userRow, err := r.queries.GetUserByEmailAndTenant(ctx, sqlc.GetUserByEmailAndTenantParams{
+	user, err := r.queries.GetUserByEmailAndTenant(ctx, sqlc.GetUserByEmailAndTenantParams{
 		TenantID: pgtype.UUID{Bytes: tenantID, Valid: true},
 		Email:    email,
 	})
@@ -138,23 +139,12 @@ func (r *UserRepo) GetUserByEmailAndTenant(ctx context.Context, email string, te
 		return nil, fmt.Errorf("failed to get user by email and tenant: %w", err)
 	}
 
-	user := &sqlc.User{
-		ID:           userRow.ID,
-		TenantID:     userRow.TenantID,
-		Email:        userRow.Email,
-		PasswordHash: userRow.PasswordHash,
-		Otp:          userRow.Otp,
-		OtpExpiresAt: userRow.OtpExpiresAt,
-		CreatedAt:    userRow.CreatedAt,
-		UpdatedAt:    userRow.UpdatedAt,
-	}
-
-	return user, nil
+	return &user, nil
 }
 
 // GetUserByIDAndTenant retrieves a user by ID within a specific tenant
 func (r *UserRepo) GetUserByIDAndTenant(ctx context.Context, userID, tenantID uuid.UUID) (*sqlc.User, error) {
-	userRow, err := r.queries.GetUserByIDAndTenant(ctx, sqlc.GetUserByIDAndTenantParams{
+	user, err := r.queries.GetUserByIDAndTenant(ctx, sqlc.GetUserByIDAndTenantParams{
 		TenantID: pgtype.UUID{Bytes: tenantID, Valid: true},
 		ID:       userID,
 	})
@@ -168,22 +158,11 @@ func (r *UserRepo) GetUserByIDAndTenant(ctx context.Context, userID, tenantID uu
 			Str("user_id", userID.String()).
 			Str("tenant_id", tenantID.String()).
 			Err(err).
-			Msg("DB query failed")
+			Msg("Failed to get user by ID and tenant")
 		return nil, fmt.Errorf("failed to get user by ID and tenant: %w", err)
 	}
 
-	user := &sqlc.User{
-		ID:           userRow.ID,
-		TenantID:     userRow.TenantID,
-		Email:        userRow.Email,
-		PasswordHash: userRow.PasswordHash,
-		Otp:          userRow.Otp,
-		OtpExpiresAt: userRow.OtpExpiresAt,
-		CreatedAt:    userRow.CreatedAt,
-		UpdatedAt:    userRow.UpdatedAt,
-	}
-
-	return user, nil
+	return &user, nil
 }
 
 // CreateUserInTenant creates a new user within a specific tenant
@@ -193,6 +172,8 @@ func (r *UserRepo) CreateUserInTenant(ctx context.Context, user *sqlc.User) erro
 			TenantID:     user.TenantID,
 			Email:        user.Email,
 			PasswordHash: user.PasswordHash,
+			Otp:          user.Otp,
+			OtpExpiresAt: user.OtpExpiresAt,
 		})
 		if err != nil {
 			log.Error().
@@ -524,7 +505,7 @@ func (r *UserRepo) GetSessionsByUserIDAndTenant(ctx context.Context, userID, ten
 
 // GetUserByVerificationTokenAndTenant retrieves a user by verification token within a specific tenant
 func (r *UserRepo) GetUserByVerificationTokenAndTenant(ctx context.Context, token string, tenantID uuid.UUID) (*sqlc.User, error) {
-	userRow, err := r.queries.GetUserByVerificationTokenAndTenant(ctx, sqlc.GetUserByVerificationTokenAndTenantParams{
+	user, err := r.queries.GetUserByVerificationTokenAndTenant(ctx, sqlc.GetUserByVerificationTokenAndTenantParams{
 		TenantID:          pgtype.UUID{Bytes: tenantID, Valid: true},
 		VerificationToken: pgtype.Text{String: token, Valid: true},
 	})
@@ -542,23 +523,33 @@ func (r *UserRepo) GetUserByVerificationTokenAndTenant(ctx context.Context, toke
 		return nil, fmt.Errorf("failed to get user by verification token and tenant: %w", err)
 	}
 
-	user := &sqlc.User{
-		ID:                userRow.ID,
-		TenantID:          userRow.TenantID,
-		Email:             userRow.Email,
-		PasswordHash:      userRow.PasswordHash,
-		Otp:               userRow.Otp,
-		OtpExpiresAt:      userRow.OtpExpiresAt,
-		CreatedAt:         userRow.CreatedAt,
-		UpdatedAt:         userRow.UpdatedAt,
-		EmailVerified:     userRow.EmailVerified,
-		VerificationToken: userRow.VerificationToken,
-	}
-
-	return user, nil
+	return &user, nil
 }
 
-// UpdateUserEmailVerified updates the email verification status of a user within a specific tenant
+// GetUserByOTPAndTenant retrieves a user by OTP within a specific tenant
+func (r *UserRepo) GetUserByOTPAndTenant(ctx context.Context, otp string, tenantID uuid.UUID) (*sqlc.User, error) {
+	user, err := r.queries.GetUserByOTPAndTenant(ctx, sqlc.GetUserByOTPAndTenantParams{
+		TenantID: pgtype.UUID{Bytes: tenantID, Valid: true},
+		Otp:      pgtype.Text{String: otp, Valid: true},
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "GetUserByOTPAndTenant").
+			Str("otp", otp).
+			Str("tenant_id", tenantID.String()).
+			Err(err).
+			Msg("Failed to get user by OTP and tenant")
+		return nil, err
+	}
+
+	return &user, nil
+}
+
+// UpdateUserEmailVerified marks a user's email as verified
 func (r *UserRepo) UpdateUserEmailVerified(ctx context.Context, userID uuid.UUID, tenantID uuid.UUID, verified bool) error {
 	err := r.queries.UpdateUserEmailVerified(ctx, sqlc.UpdateUserEmailVerifiedParams{
 		ID:            userID,

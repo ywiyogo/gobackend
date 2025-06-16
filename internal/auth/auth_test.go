@@ -187,6 +187,11 @@ func (m *MockRepository) GetUserByVerificationTokenAndTenant(ctx context.Context
 	return args.Get(0).(*sqlc.User), args.Error(1)
 }
 
+func (m *MockRepository) GetUserByOTPAndTenant(ctx context.Context, otp string, tenantID uuid.UUID) (*sqlc.User, error) {
+	args := m.Called(ctx, otp, tenantID)
+	return args.Get(0).(*sqlc.User), args.Error(1)
+}
+
 func (m *MockRepository) UpdateUserEmailVerified(ctx context.Context, userID uuid.UUID, tenantID uuid.UUID, verified bool) error {
 	args := m.Called(ctx, userID, tenantID, verified)
 	return args.Error(0)

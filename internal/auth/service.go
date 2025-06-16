@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"net/http"
@@ -17,11 +18,17 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// TenantService interface for tenant operations needed by auth service
+type TenantService interface {
+	GetTenantByID(ctx context.Context, tenantID uuid.UUID) (*sqlc.Tenant, error)
+}
+
 var ErrAuth = errors.New("unauthorized access")
 
 type Service struct {
-	repo   AuthRepository
-	mailer mailer.Mailer
+	repo          AuthRepository
+	mailer        mailer.Mailer
+	tenantService TenantService
 }
 
 type OTPSession struct {
@@ -53,6 +60,15 @@ func NewServiceWithMailer(repo AuthRepository, mailerService mailer.Mailer) *Ser
 	}
 }
 
+// NewServiceWithTenant creates a new auth service with mailer and tenant service
+func NewServiceWithTenant(repo AuthRepository, mailerService mailer.Mailer, tenantService TenantService) *Service {
+	return &Service{
+		repo:          repo,
+		mailer:        mailerService,
+		tenantService: tenantService,
+	}
+}
+
 // Multi-tenant authentication methods
 
 // RegisterWithPasswordInTenant registers a new user with password in a specific tenant
@@ -79,30 +95,53 @@ func (s *Service) RegisterWithPasswordInTenant(ctx context.Context, email, passw
 		return nil, fmt.Errorf("error hashing password: %w", err)
 	}
 
-	// Generate verification token
-	verificationToken, err := utils.GenerateSecureToken(32)
-	if err != nil {
-		return nil, fmt.Errorf("error generating verification token: %w", err)
+	// Generate 6-digit OTP for email verification
+	otpCode := utils.GenerateOTP(6)
+	if os.Getenv("ENV") == "test" || os.Getenv("ENV") == "development" {
+		// Generate predictable but unique OTP for each user in test/dev
+		h := sha256.Sum256([]byte(email + tenantID.String()))
+		otpCode = fmt.Sprintf("%06d", int(h[0])<<16|int(h[1])<<8|int(h[2]))
+		if len(otpCode) > 6 {
+			otpCode = otpCode[:6]
+		}
 	}
+	otpExpiry := time.Now().Add(15 * time.Minute)
 
 	// Create user with verification token
 	user := &sqlc.User{
-		ID:                uuid.New(),
-		TenantID:          pgtype.UUID{Bytes: tenantID, Valid: true},
-		Email:             email,
-		PasswordHash:      pgtype.Text{String: hashedPassword, Valid: true},
-		VerificationToken: pgtype.Text{String: verificationToken, Valid: true},
-		EmailVerified:     pgtype.Bool{Bool: false, Valid: true},
-		CreatedAt:         time.Now(),
-		UpdatedAt:         time.Now(),
+		ID:            uuid.New(),
+		TenantID:      pgtype.UUID{Bytes: tenantID, Valid: true},
+		Email:         email,
+		PasswordHash:  pgtype.Text{String: hashedPassword, Valid: true},
+		Otp:           pgtype.Text{String: otpCode, Valid: true},
+		OtpExpiresAt:  pgtype.Timestamptz{Time: otpExpiry, Valid: true},
+		EmailVerified: pgtype.Bool{Bool: false, Valid: true},
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 
 	if err := s.repo.CreateUserInTenant(ctx, user); err != nil {
 		return nil, fmt.Errorf("error creating user: %w", err)
 	}
 
+	// Get tenant name for email
+	tenant, err := s.tenantService.GetTenantByID(ctx, tenantID)
+	if err != nil {
+		log.Warn().
+			Str("pkg", pkgName).
+			Str("method", "RegisterWithPasswordInTenant").
+			Str("tenant_id", tenantID.String()).
+			Err(err).
+			Msg("Failed to get tenant name, using default")
+	}
+
+	tenantName := "Your App Name" // Default fallback
+	if tenant != nil {
+		tenantName = tenant.Name
+	}
+
 	// Send verification email (log error but don't fail registration)
-	err = s.mailer.SendVerificationEmail(email, "", verificationToken, "Your App Name")
+	err = s.mailer.SendVerificationEmail(email, "", otpCode, tenantName, otpExpiry)
 	if err != nil {
 		log.Warn().
 			Str("pkg", pkgName).
@@ -126,15 +165,21 @@ func (s *Service) RegisterWithOTPInTenant(ctx context.Context, email string, ten
 		return nil, "", fmt.Errorf("user already exists in this application")
 	}
 
-	// Generate OTP, use fixed value in test/dev environments
+	// Generate OTP, use unique predictable value in test/dev environments
 	otpCode := utils.GenerateOTP(6)
 	if os.Getenv("ENV") == "test" || os.Getenv("ENV") == "development" {
-		otpCode = "123456"
+		// Generate predictable but unique OTP for each user in test/dev
+		h := sha256.Sum256([]byte(email + tenantID.String()))
+		otpCode = fmt.Sprintf("%06d", int(h[0])<<16|int(h[1])<<8|int(h[2]))
+		if len(otpCode) > 6 {
+			otpCode = otpCode[:6]
+		}
 		log.Warn().
 			Str("pkg", pkgName).
 			Str("method", "RegisterWithOTPInTenant").
 			Str("email", email).
-			Msg("Using fixed OTP in test/dev environment")
+			Str("otp", otpCode).
+			Msg("Using predictable unique OTP in test/dev environment")
 	}
 	otpExpiry := time.Now().Add(15 * time.Minute)
 
@@ -373,7 +418,7 @@ func (s *Service) VerifyOTPInTenant(ctx context.Context, sessionToken, otpCode s
 	return newSession, nil
 }
 
-// VerifyEmailInTenant verifies the email using the provided token in a specific tenant
+// VerifyEmailInTenant verifies the email using the provided token in a specific tenant (legacy method)
 func (s *Service) VerifyEmailInTenant(ctx context.Context, token string, tenantID uuid.UUID) (*sqlc.User, error) {
 	user, err := s.repo.GetUserByVerificationTokenAndTenant(ctx, token, tenantID)
 	if err != nil {
@@ -387,13 +432,16 @@ func (s *Service) VerifyEmailInTenant(ctx context.Context, token string, tenantI
 		return nil, fmt.Errorf("email already verified")
 	}
 
-	// Update user to set email as verified
+	// Check if verification token is expired (if you have an expiry logic)
+	// For now, we'll skip this check
+
+	// Update email verified status
 	err = s.repo.UpdateUserEmailVerified(ctx, user.ID, tenantID, true)
 	if err != nil {
 		return nil, fmt.Errorf("error updating email verification status: %w", err)
 	}
 
-	// Clear the verification token
+	// Clear verification token
 	err = s.repo.ClearVerificationToken(ctx, user.ID, tenantID)
 	if err != nil {
 		log.Warn().
@@ -401,12 +449,56 @@ func (s *Service) VerifyEmailInTenant(ctx context.Context, token string, tenantI
 			Str("method", "VerifyEmailInTenant").
 			Str("user_id", user.ID.String()).
 			Err(err).
-			Msg("Failed to clear verification token")
-		// Continue despite this error as the verification is already done
+			Msg("Failed to clear verification token after successful verification")
 	}
 
+	// Return the user with updated email verification status
 	user.EmailVerified = pgtype.Bool{Bool: true, Valid: true}
 	user.VerificationToken = pgtype.Text{String: "", Valid: false}
+
+	return user, nil
+}
+
+// VerifyEmailWithOTPInTenant verifies the email using the provided OTP in a specific tenant
+func (s *Service) VerifyEmailWithOTPInTenant(ctx context.Context, otp string, tenantID uuid.UUID) (*sqlc.User, error) {
+	user, err := s.repo.GetUserByOTPAndTenant(ctx, otp, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving user by OTP: %w", err)
+	}
+	if user == nil {
+		return nil, fmt.Errorf("invalid or expired OTP code")
+	}
+
+	if user.EmailVerified.Bool {
+		return nil, fmt.Errorf("email already verified")
+	}
+
+	// Check if OTP is expired (this is already handled in the SQL query)
+	if !user.OtpExpiresAt.Valid || time.Now().After(user.OtpExpiresAt.Time) {
+		return nil, fmt.Errorf("OTP code has expired")
+	}
+
+	// Update email verified status
+	err = s.repo.UpdateUserEmailVerified(ctx, user.ID, tenantID, true)
+	if err != nil {
+		return nil, fmt.Errorf("error updating email verification status: %w", err)
+	}
+
+	// Clear OTP after successful verification
+	err = s.repo.ClearUserOTPInTenant(ctx, user.ID, tenantID)
+	if err != nil {
+		log.Warn().
+			Str("pkg", pkgName).
+			Str("method", "VerifyEmailWithOTPInTenant").
+			Str("user_id", user.ID.String()).
+			Err(err).
+			Msg("Failed to clear OTP after successful verification")
+	}
+
+	// Return the user with updated email verification status
+	user.EmailVerified = pgtype.Bool{Bool: true, Valid: true}
+	user.Otp = pgtype.Text{String: "", Valid: false}
+	user.OtpExpiresAt = pgtype.Timestamptz{Time: time.Time{}, Valid: false}
 
 	return user, nil
 }
@@ -448,6 +540,12 @@ func (s *Service) RequestOTPInTenant(ctx context.Context, userID, tenantID uuid.
 	return otpCode, nil
 }
 
+// GetUserByEmailAndTenant retrieves a user by email within a specific tenant
+func (s *Service) GetUserByEmailAndTenant(ctx context.Context, email string, tenantID uuid.UUID) (*sqlc.User, error) {
+	return s.repo.GetUserByEmailAndTenant(ctx, email, tenantID)
+}
+
+// VerifyOTP verifies OTP and returns session token (legacy, non-tenant method)
 func (s *Service) VerifyOTP(ctx context.Context, sessionToken string, otpCode string) (string, error) {
 	session, err := s.repo.GetSessionRowByToken(ctx, sessionToken)
 	if err != nil {

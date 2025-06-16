@@ -472,7 +472,7 @@ func (h *Handler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, response, http.StatusOK)
 }
 
-// VerifyEmail handles email verification with multi-tenant support
+// VerifyEmail handles email verification with multi-tenant support (legacy token-based)
 func (h *Handler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -518,7 +518,80 @@ func (h *Handler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 
 	response := &AuthResponse{
 		User:    ToUserResponse(user),
-		Message: "Email verified successfully. You can now log in.",
+		Message: "Email verified successfully",
+	}
+	h.writeJSON(w, response, http.StatusOK)
+}
+
+// VerifyEmailWithOTP handles email verification using OTP with multi-tenant support
+func (h *Handler) VerifyEmailWithOTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		h.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get tenant from context
+	tenantObj, ok := tenant.GetTenantFromContext(r.Context())
+	if !ok {
+		h.writeError(w, "Tenant not found", http.StatusBadRequest)
+		return
+	}
+
+	// Set CORS headers
+	h.setCORSHeaders(w, tenantObj.Domain)
+
+	var otp string
+	var email string
+
+	// Get OTP and email from request (support both GET and POST)
+	if r.Method == http.MethodGet {
+		otp = r.URL.Query().Get("otp")
+		email = r.URL.Query().Get("email")
+	} else {
+		// Parse the request based on content type
+		var req struct {
+			OTP   string `json:"otp"`
+			Email string `json:"email"`
+		}
+
+		if err := h.parseRequest(r, &req); err != nil {
+			h.writeError(w, "Invalid request format", http.StatusBadRequest)
+			return
+		}
+		otp = req.OTP
+		email = req.Email
+	}
+
+	// Validate required fields
+	if otp == "" {
+		h.writeError(w, "OTP code is required", http.StatusBadRequest)
+		return
+	}
+
+	// Verify email using OTP
+	user, err := h.authService.VerifyEmailWithOTPInTenant(r.Context(), otp, tenantObj.ID)
+	if err != nil {
+		log.Error().
+			Str("pkg", pkgName).
+			Str("method", "VerifyEmailWithOTP").
+			Str("tenant_id", tenantObj.ID.String()).
+			Str("email", email).
+			Err(err).
+			Msg("Email verification with OTP failed")
+		h.handleAuthError(w, err)
+		return
+	}
+
+	log.Info().
+		Str("pkg", pkgName).
+		Str("method", "VerifyEmailWithOTP").
+		Str("user_id", user.ID.String()).
+		Str("tenant_id", tenantObj.ID.String()).
+		Msg("Email verified successfully with OTP")
+
+	response := &AuthResponse{
+		User:    ToUserResponse(user),
+		Message: "Email verified successfully",
 	}
 	h.writeJSON(w, response, http.StatusOK)
 }
@@ -730,6 +803,12 @@ func (h *Handler) handleAuthError(w http.ResponseWriter, err error) {
 		h.writeError(w, "Session expired", http.StatusUnauthorized)
 	} else if strings.Contains(err.Error(), "invalid OTP code") {
 		h.writeError(w, "Invalid OTP code", http.StatusUnauthorized)
+	} else if strings.Contains(err.Error(), "invalid or expired OTP code") {
+		h.writeError(w, "Invalid or expired OTP code", http.StatusBadRequest)
+	} else if strings.Contains(err.Error(), "email already verified") {
+		h.writeError(w, "Email already verified", http.StatusBadRequest)
+	} else if strings.Contains(err.Error(), "OTP code has expired") {
+		h.writeError(w, "OTP code has expired", http.StatusBadRequest)
 	} else if strings.Contains(err.Error(), "user not found") {
 		h.writeError(w, "User not found", http.StatusNotFound)
 	} else {

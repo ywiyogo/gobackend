@@ -360,7 +360,7 @@ func (s *Service) clearCache() {
 	defer s.mutex.Unlock()
 	s.cache = make(map[string]*sqlc.Tenant)
 
-	log.Debug().
+	log.Info().
 		Str("pkg", pkgName).
 		Str("method", "clearCache").
 		Msg("Tenant cache cleared")
@@ -372,7 +372,7 @@ func (s *Service) ClearCacheForDomain(domain string) {
 	defer s.mutex.Unlock()
 	delete(s.cache, domain)
 
-	log.Debug().
+	log.Info().
 		Str("pkg", pkgName).
 		Str("method", "ClearCacheForDomain").
 		Str("domain", domain).

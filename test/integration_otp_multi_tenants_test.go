@@ -307,7 +307,7 @@ func TestMultiTenantOTPErrors(t *testing.T) {
 		resp, err := newClient.Do(req)
 		require.NoError(t, err)
 		defer resp.Body.Close()
-		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	})
 }
 

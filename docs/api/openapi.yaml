@@ -1,4 +1,4 @@
-openapi: 3.0.3
+openapi: 3.1.0
 info:
   title: Go Backend API
   description: |
@@ -42,7 +42,7 @@ paths:
       summary: Home endpoint
       description: Simple greeting endpoint
       responses:
-        '200':
+        "200":
           description: Greeting message
           content:
             text/plain:
@@ -57,24 +57,24 @@ paths:
       summary: Comprehensive health check
       description: Performs comprehensive health checks including database connectivity and tenant table status
       responses:
-        '200':
+        "200":
           description: Service is healthy
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthResponse'
-        '206':
+                $ref: "#/components/schemas/HealthResponse"
+        "206":
           description: Service is partially healthy (degraded)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthResponse'
-        '503':
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
           description: Service is unhealthy
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthResponse'
+                $ref: "#/components/schemas/HealthResponse"
 
   /ready:
     get:
@@ -83,14 +83,14 @@ paths:
       summary: Readiness check
       description: Simple readiness probe for container orchestration
       responses:
-        '200':
+        "200":
           description: Service is ready
           content:
             text/plain:
               schema:
                 type: string
                 example: "OK"
-        '503':
+        "503":
           description: Service is not ready
           content:
             text/plain:
@@ -104,7 +104,7 @@ paths:
       summary: Liveness check
       description: Simple liveness probe for container orchestration
       responses:
-        '200':
+        "200":
           description: Service is alive
           content:
             text/plain:
@@ -119,32 +119,32 @@ paths:
       summary: Register new user
       description: Creates a new user account in the specified tenant
       parameters:
-        - $ref: '#/components/parameters/OriginHeader'
+        - $ref: "#/components/parameters/OriginHeader"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RegisterRequest'
+              $ref: "#/components/schemas/RegisterRequest"
       responses:
-        '200':
+        "200":
           description: Registration successful
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthResponse'
-        '400':
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
           description: Bad request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
           description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /login:
     post:
@@ -153,66 +153,209 @@ paths:
       summary: Login user
       description: Authenticates a user and creates a session
       parameters:
-        - $ref: '#/components/parameters/OriginHeader'
+        - $ref: "#/components/parameters/OriginHeader"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/LoginRequest'
+              $ref: "#/components/schemas/LoginRequest"
       responses:
-        '200':
+        "200":
           description: Login successful
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthResponse'
-        '400':
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
           description: Bad request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
           description: Unauthorized
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /verify-otp:
     post:
       tags:
         - Authentication
       summary: Verify OTP code
-      description: Verifies an OTP code sent to the user's email
+      description: Verifies the OTP code sent to user's email
       parameters:
-        - $ref: '#/components/parameters/OriginHeader'
+        - $ref: "#/components/parameters/OriginHeader"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/VerifyOTPRequest'
+              $ref: "#/components/schemas/VerifyOTPRequest"
       responses:
-        '200':
+        "200":
           description: OTP verified successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthResponse'
-        '400':
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
           description: Bad request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: Invalid OTP
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid or expired OTP
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /verify-email:
+    get:
+      tags:
+        - Authentication
+      summary: Verify email with token
+      description: Verifies user's email address using a verification token (legacy method)
+      parameters:
+        - $ref: "#/components/parameters/OriginHeader"
+        - name: token
+          in: query
+          required: true
+          description: Email verification token
+          schema:
+            type: string
+            example: "abc123def456"
+      responses:
+        "200":
+          description: Email verified successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/UserResponse"
+                  message:
+                    type: string
+                    example: "Email verified successfully"
+        "400":
+          description: Bad request or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Email already verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /verify-email-otp:
+    get:
+      tags:
+        - Authentication
+      summary: Verify email with OTP (GET)
+      description: Verifies user's email address using OTP code via GET request
+      parameters:
+        - $ref: "#/components/parameters/OriginHeader"
+        - name: otp
+          in: query
+          required: true
+          description: OTP verification code
+          schema:
+            type: string
+            pattern: "^[0-9]{6}$"
+            example: "123456"
+        - name: email
+          in: query
+          required: false
+          description: User's email address (optional for additional verification)
+          schema:
+            type: string
+            format: email
+            example: "user@example.com"
+      responses:
+        "200":
+          description: Email verified successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/UserResponse"
+                  message:
+                    type: string
+                    example: "Email verified successfully"
+        "400":
+          description: Bad request or invalid OTP
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Email already verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    post:
+      tags:
+        - Authentication
+      summary: Verify email with OTP (POST)
+      description: Verifies user's email address using OTP code via POST request
+      parameters:
+        - $ref: "#/components/parameters/OriginHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - otp
+              properties:
+                otp:
+                  type: string
+                  pattern: "^[0-9]{6}$"
+                  description: OTP verification code
+                  example: "123456"
+                email:
+                  type: string
+                  format: email
+                  description: User's email address (optional for additional verification)
+                  example: "user@example.com"
+      responses:
+        "200":
+          description: Email verified successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/UserResponse"
+                  message:
+                    type: string
+                    example: "Email verified successfully"
+        "400":
+          description: Bad request or invalid OTP
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Email already verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /logout:
     post:
@@ -223,16 +366,16 @@ paths:
       security:
         - SessionAuth: []
       parameters:
-        - $ref: '#/components/parameters/OriginHeader'
-        - $ref: '#/components/parameters/CSRFTokenHeader'
+        - $ref: "#/components/parameters/OriginHeader"
+        - $ref: "#/components/parameters/CSRFTokenHeader"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/LogoutRequest'
+              $ref: "#/components/schemas/LogoutRequest"
       responses:
-        '200':
+        "200":
           description: Logout successful
           content:
             application/json:
@@ -242,12 +385,12 @@ paths:
                   message:
                     type: string
                     example: "Logout successful"
-        '401':
+        "401":
           description: Unauthorized
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /dashboard:
     post:
@@ -258,10 +401,10 @@ paths:
       security:
         - SessionAuth: []
       parameters:
-        - $ref: '#/components/parameters/OriginHeader'
-        - $ref: '#/components/parameters/CSRFTokenHeader'
+        - $ref: "#/components/parameters/OriginHeader"
+        - $ref: "#/components/parameters/CSRFTokenHeader"
       responses:
-        '200':
+        "200":
           description: Dashboard data retrieved successfully
           content:
             application/json:
@@ -269,16 +412,16 @@ paths:
                 type: object
                 properties:
                   user:
-                    $ref: '#/components/schemas/UserResponse'
+                    $ref: "#/components/schemas/UserResponse"
                   message:
                     type: string
                     example: "Dashboard data retrieved successfully"
-        '401':
+        "401":
           description: Unauthorized
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/notes:
     get:
@@ -287,42 +430,42 @@ paths:
       summary: Get all notes
       description: Retrieves all notes
       parameters:
-        - $ref: '#/components/parameters/OriginHeader'
+        - $ref: "#/components/parameters/OriginHeader"
       responses:
-        '200':
+        "200":
           description: Notes retrieved successfully
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Note'
+                  $ref: "#/components/schemas/Note"
     post:
       tags:
         - Notes
       summary: Create note
       description: Creates a new note
       parameters:
-        - $ref: '#/components/parameters/OriginHeader'
+        - $ref: "#/components/parameters/OriginHeader"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateNoteRequest'
+              $ref: "#/components/schemas/CreateNoteRequest"
       responses:
-        '201':
+        "201":
           description: Note created successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Note'
-        '400':
+                $ref: "#/components/schemas/Note"
+        "400":
           description: Bad request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/notes/{id}:
     get:
@@ -331,7 +474,7 @@ paths:
       summary: Get note by ID
       description: Retrieves a specific note by its ID
       parameters:
-        - $ref: '#/components/parameters/OriginHeader'
+        - $ref: "#/components/parameters/OriginHeader"
         - name: id
           in: path
           required: true
@@ -340,25 +483,25 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: Note retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Note'
-        '404':
+                $ref: "#/components/schemas/Note"
+        "404":
           description: Note not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
     put:
       tags:
         - Notes
       summary: Update note
       description: Updates an existing note
       parameters:
-        - $ref: '#/components/parameters/OriginHeader'
+        - $ref: "#/components/parameters/OriginHeader"
         - name: id
           in: path
           required: true
@@ -371,27 +514,27 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateNoteRequest'
+              $ref: "#/components/schemas/UpdateNoteRequest"
       responses:
-        '200':
+        "200":
           description: Note updated successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Note'
-        '404':
+                $ref: "#/components/schemas/Note"
+        "404":
           description: Note not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       tags:
         - Notes
       summary: Delete note
       description: Deletes a specific note
       parameters:
-        - $ref: '#/components/parameters/OriginHeader'
+        - $ref: "#/components/parameters/OriginHeader"
         - name: id
           in: path
           required: true
@@ -400,7 +543,7 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: Note deleted successfully
           content:
             application/json:
@@ -410,12 +553,12 @@ paths:
                   message:
                     type: string
                     example: "Note deleted successfully"
-        '404':
+        "404":
           description: Note not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /admin/tenants:
     get:
@@ -424,18 +567,18 @@ paths:
       summary: Get all tenants
       description: Retrieves all tenants (admin endpoint)
       responses:
-        '200':
+        "200":
           description: Tenants retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TenantsListResponse'
-        '500':
+                $ref: "#/components/schemas/TenantsListResponse"
+        "500":
           description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
     post:
       tags:
         - Tenant Management
@@ -446,26 +589,26 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateTenantRequest'
+              $ref: "#/components/schemas/CreateTenantRequest"
       responses:
-        '201':
+        "201":
           description: Tenant created successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TenantResponse'
-        '400':
+                $ref: "#/components/schemas/TenantResponse"
+        "400":
           description: Bad request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
           description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /admin/tenants/{id}:
     get:
@@ -482,18 +625,18 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: Tenant retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TenantResponse'
-        '404':
+                $ref: "#/components/schemas/TenantResponse"
+        "404":
           description: Tenant not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
     put:
       tags:
         - Tenant Management
@@ -512,20 +655,20 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateTenantRequest'
+              $ref: "#/components/schemas/UpdateTenantRequest"
       responses:
-        '200':
+        "200":
           description: Tenant updated successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TenantResponse'
-        '404':
+                $ref: "#/components/schemas/TenantResponse"
+        "404":
           description: Tenant not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       tags:
         - Tenant Management
@@ -540,7 +683,7 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: Tenant deleted successfully
           content:
             application/json:
@@ -550,12 +693,12 @@ paths:
                   message:
                     type: string
                     example: "Tenant deleted successfully"
-        '404':
+        "404":
           description: Tenant not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   securitySchemes:
@@ -600,7 +743,7 @@ components:
           example: "password123"
         otp:
           type: string
-          pattern: '^[0-9]{6}$'
+          pattern: "^[0-9]{6}$"
           description: 6-digit OTP code (required if OTP is enabled)
           example: "123456"
 
@@ -620,7 +763,7 @@ components:
           example: "password123"
         otp:
           type: string
-          pattern: '^[0-9]{6}$'
+          pattern: "^[0-9]{6}$"
           description: 6-digit OTP code (required if OTP is enabled)
           example: "123456"
 
@@ -637,7 +780,7 @@ components:
           example: "user@example.com"
         otp:
           type: string
-          pattern: '^[0-9]{6}$'
+          pattern: "^[0-9]{6}$"
           description: 6-digit OTP code
           example: "123456"
         session_token:
@@ -658,7 +801,7 @@ components:
       type: object
       properties:
         user:
-          $ref: '#/components/schemas/UserResponse'
+          $ref: "#/components/schemas/UserResponse"
         session_token:
           type: string
           description: Session token for authentication
@@ -694,6 +837,10 @@ components:
           format: email
           description: User's email address
           example: "user@example.com"
+        email_verified:
+          type: boolean
+          description: Whether the user's email address has been verified
+          example: true
         created_at:
           type: string
           format: date-time
@@ -820,7 +967,7 @@ components:
           description: Whether tenant is active
           example: true
         settings:
-          $ref: '#/components/schemas/TenantSettings'
+          $ref: "#/components/schemas/TenantSettings"
 
     UpdateTenantRequest:
       type: object
@@ -847,7 +994,7 @@ components:
           description: Whether tenant is active
           example: true
         settings:
-          $ref: '#/components/schemas/TenantSettings'
+          $ref: "#/components/schemas/TenantSettings"
 
     TenantResponse:
       type: object
@@ -906,7 +1053,7 @@ components:
         tenants:
           type: array
           items:
-            $ref: '#/components/schemas/TenantResponse'
+            $ref: "#/components/schemas/TenantResponse"
         total:
           type: integer
           description: Total number of tenants

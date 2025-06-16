@@ -94,10 +94,12 @@ func main() {
 		log.Fatal("Queries cannot be nil")
 	}
 	repo := auth.NewAuthRepository(queries)
-	authService := auth.NewServiceWithMailer(repo, mailerService)
 
 	// Initialize tenant service
 	tenantService := tenant.NewService(queries)
+
+	// Initialize auth service with tenant service
+	authService := auth.NewServiceWithTenant(repo, mailerService, tenantService)
 
 	// Initialize health service
 	healthHandler := health.NewHandler(tenantService)
@@ -136,6 +138,15 @@ func main() {
 		},
 		"POST /verify-otp": func(w http.ResponseWriter, r *http.Request) {
 			tenantMiddleware(http.HandlerFunc(userHandler.VerifyOTP)).ServeHTTP(w, r)
+		},
+		"GET /verify-email": func(w http.ResponseWriter, r *http.Request) {
+			tenantMiddleware(http.HandlerFunc(userHandler.VerifyEmail)).ServeHTTP(w, r)
+		},
+		"GET /verify-email-otp": func(w http.ResponseWriter, r *http.Request) {
+			tenantMiddleware(http.HandlerFunc(userHandler.VerifyEmailWithOTP)).ServeHTTP(w, r)
+		},
+		"POST /verify-email-otp": func(w http.ResponseWriter, r *http.Request) {
+			tenantMiddleware(http.HandlerFunc(userHandler.VerifyEmailWithOTP)).ServeHTTP(w, r)
 		},
 	}
 

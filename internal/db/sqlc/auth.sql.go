@@ -301,19 +301,27 @@ func (q *Queries) CreateUserWithPassword(ctx context.Context, arg CreateUserWith
 }
 
 const createUserWithPasswordInTenant = `-- name: CreateUserWithPasswordInTenant :one
-INSERT INTO users (id, tenant_id, email, password_hash, created_at, updated_at)
-VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW())
+INSERT INTO users (id, tenant_id, email, password_hash, otp, otp_expires_at, created_at, updated_at)
+VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW(), NOW())
 RETURNING id, email, password_hash, otp, otp_expires_at, email_verified, verification_token, created_at, updated_at, tenant_id
 `
 
 type CreateUserWithPasswordInTenantParams struct {
-	TenantID     pgtype.UUID `json:"tenant_id"`
-	Email        string      `json:"email"`
-	PasswordHash pgtype.Text `json:"password_hash"`
+	TenantID     pgtype.UUID        `json:"tenant_id"`
+	Email        string             `json:"email"`
+	PasswordHash pgtype.Text        `json:"password_hash"`
+	Otp          pgtype.Text        `json:"otp"`
+	OtpExpiresAt pgtype.Timestamptz `json:"otp_expires_at"`
 }
 
 func (q *Queries) CreateUserWithPasswordInTenant(ctx context.Context, arg CreateUserWithPasswordInTenantParams) (User, error) {
-	row := q.db.QueryRow(ctx, createUserWithPasswordInTenant, arg.TenantID, arg.Email, arg.PasswordHash)
+	row := q.db.QueryRow(ctx, createUserWithPasswordInTenant,
+		arg.TenantID,
+		arg.Email,
+		arg.PasswordHash,
+		arg.Otp,
+		arg.OtpExpiresAt,
+	)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -728,8 +736,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 
 const getUserByEmailAndTenant = `-- name: GetUserByEmailAndTenant :one
 
-SELECT id, tenant_id, email, password_hash, otp, otp_expires_at, created_at, updated_at
-FROM users
+SELECT id, email, password_hash, otp, otp_expires_at, email_verified, verification_token, created_at, updated_at, tenant_id FROM users
 WHERE tenant_id = $1 AND email = $2
 LIMIT 1
 `
@@ -739,37 +746,27 @@ type GetUserByEmailAndTenantParams struct {
 	Email    string      `json:"email"`
 }
 
-type GetUserByEmailAndTenantRow struct {
-	ID           uuid.UUID          `json:"id"`
-	TenantID     pgtype.UUID        `json:"tenant_id"`
-	Email        string             `json:"email"`
-	PasswordHash pgtype.Text        `json:"password_hash"`
-	Otp          pgtype.Text        `json:"otp"`
-	OtpExpiresAt pgtype.Timestamptz `json:"otp_expires_at"`
-	CreatedAt    time.Time          `json:"created_at"`
-	UpdatedAt    time.Time          `json:"updated_at"`
-}
-
 // Tenant-aware user queries
-func (q *Queries) GetUserByEmailAndTenant(ctx context.Context, arg GetUserByEmailAndTenantParams) (GetUserByEmailAndTenantRow, error) {
+func (q *Queries) GetUserByEmailAndTenant(ctx context.Context, arg GetUserByEmailAndTenantParams) (User, error) {
 	row := q.db.QueryRow(ctx, getUserByEmailAndTenant, arg.TenantID, arg.Email)
-	var i GetUserByEmailAndTenantRow
+	var i User
 	err := row.Scan(
 		&i.ID,
-		&i.TenantID,
 		&i.Email,
 		&i.PasswordHash,
 		&i.Otp,
 		&i.OtpExpiresAt,
+		&i.EmailVerified,
+		&i.VerificationToken,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TenantID,
 	)
 	return i, err
 }
 
 const getUserByIDAndTenant = `-- name: GetUserByIDAndTenant :one
-SELECT id, tenant_id, email, password_hash, otp, otp_expires_at, created_at, updated_at
-FROM users
+SELECT id, email, password_hash, otp, otp_expires_at, email_verified, verification_token, created_at, updated_at, tenant_id FROM users
 WHERE tenant_id = $1 AND id = $2
 LIMIT 1
 `
@@ -779,36 +776,55 @@ type GetUserByIDAndTenantParams struct {
 	ID       uuid.UUID   `json:"id"`
 }
 
-type GetUserByIDAndTenantRow struct {
-	ID           uuid.UUID          `json:"id"`
-	TenantID     pgtype.UUID        `json:"tenant_id"`
-	Email        string             `json:"email"`
-	PasswordHash pgtype.Text        `json:"password_hash"`
-	Otp          pgtype.Text        `json:"otp"`
-	OtpExpiresAt pgtype.Timestamptz `json:"otp_expires_at"`
-	CreatedAt    time.Time          `json:"created_at"`
-	UpdatedAt    time.Time          `json:"updated_at"`
-}
-
-func (q *Queries) GetUserByIDAndTenant(ctx context.Context, arg GetUserByIDAndTenantParams) (GetUserByIDAndTenantRow, error) {
+func (q *Queries) GetUserByIDAndTenant(ctx context.Context, arg GetUserByIDAndTenantParams) (User, error) {
 	row := q.db.QueryRow(ctx, getUserByIDAndTenant, arg.TenantID, arg.ID)
-	var i GetUserByIDAndTenantRow
+	var i User
 	err := row.Scan(
 		&i.ID,
-		&i.TenantID,
 		&i.Email,
 		&i.PasswordHash,
 		&i.Otp,
 		&i.OtpExpiresAt,
+		&i.EmailVerified,
+		&i.VerificationToken,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TenantID,
+	)
+	return i, err
+}
+
+const getUserByOTPAndTenant = `-- name: GetUserByOTPAndTenant :one
+SELECT id, email, password_hash, otp, otp_expires_at, email_verified, verification_token, created_at, updated_at, tenant_id FROM users
+WHERE tenant_id = $1 AND otp = $2 AND otp_expires_at > NOW()
+LIMIT 1
+`
+
+type GetUserByOTPAndTenantParams struct {
+	TenantID pgtype.UUID `json:"tenant_id"`
+	Otp      pgtype.Text `json:"otp"`
+}
+
+func (q *Queries) GetUserByOTPAndTenant(ctx context.Context, arg GetUserByOTPAndTenantParams) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByOTPAndTenant, arg.TenantID, arg.Otp)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.Otp,
+		&i.OtpExpiresAt,
+		&i.EmailVerified,
+		&i.VerificationToken,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.TenantID,
 	)
 	return i, err
 }
 
 const getUserByVerificationTokenAndTenant = `-- name: GetUserByVerificationTokenAndTenant :one
-SELECT id, tenant_id, email, password_hash, otp, otp_expires_at, created_at, updated_at, email_verified, verification_token
-FROM users
+SELECT id, email, password_hash, otp, otp_expires_at, email_verified, verification_token, created_at, updated_at, tenant_id FROM users
 WHERE tenant_id = $1 AND verification_token = $2
 LIMIT 1
 `
@@ -818,33 +834,20 @@ type GetUserByVerificationTokenAndTenantParams struct {
 	VerificationToken pgtype.Text `json:"verification_token"`
 }
 
-type GetUserByVerificationTokenAndTenantRow struct {
-	ID                uuid.UUID          `json:"id"`
-	TenantID          pgtype.UUID        `json:"tenant_id"`
-	Email             string             `json:"email"`
-	PasswordHash      pgtype.Text        `json:"password_hash"`
-	Otp               pgtype.Text        `json:"otp"`
-	OtpExpiresAt      pgtype.Timestamptz `json:"otp_expires_at"`
-	CreatedAt         time.Time          `json:"created_at"`
-	UpdatedAt         time.Time          `json:"updated_at"`
-	EmailVerified     pgtype.Bool        `json:"email_verified"`
-	VerificationToken pgtype.Text        `json:"verification_token"`
-}
-
-func (q *Queries) GetUserByVerificationTokenAndTenant(ctx context.Context, arg GetUserByVerificationTokenAndTenantParams) (GetUserByVerificationTokenAndTenantRow, error) {
+func (q *Queries) GetUserByVerificationTokenAndTenant(ctx context.Context, arg GetUserByVerificationTokenAndTenantParams) (User, error) {
 	row := q.db.QueryRow(ctx, getUserByVerificationTokenAndTenant, arg.TenantID, arg.VerificationToken)
-	var i GetUserByVerificationTokenAndTenantRow
+	var i User
 	err := row.Scan(
 		&i.ID,
-		&i.TenantID,
 		&i.Email,
 		&i.PasswordHash,
 		&i.Otp,
 		&i.OtpExpiresAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
 		&i.EmailVerified,
 		&i.VerificationToken,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.TenantID,
 	)
 	return i, err
 }

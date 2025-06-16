@@ -105,14 +105,13 @@ WHERE id = $1;
 -- Tenant-aware user queries
 
 -- name: GetUserByEmailAndTenant :one
-SELECT id, tenant_id, email, password_hash, otp, otp_expires_at, created_at, updated_at
-FROM users
+SELECT * FROM users
 WHERE tenant_id = $1 AND email = $2
 LIMIT 1;
 
 -- name: CreateUserWithPasswordInTenant :one
-INSERT INTO users (id, tenant_id, email, password_hash, created_at, updated_at)
-VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW())
+INSERT INTO users (id, tenant_id, email, password_hash, otp, otp_expires_at, created_at, updated_at)
+VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW(), NOW())
 RETURNING *;
 
 -- name: CreateUserWithOtpInTenant :one
@@ -185,8 +184,7 @@ SET session_token = $3,
 WHERE tenant_id = $1 AND id = $2;
 
 -- name: GetUserByIDAndTenant :one
-SELECT id, tenant_id, email, password_hash, otp, otp_expires_at, created_at, updated_at
-FROM users
+SELECT * FROM users
 WHERE tenant_id = $1 AND id = $2
 LIMIT 1;
 
@@ -233,9 +231,13 @@ FROM sessions
 WHERE tenant_id = $1;
 
 -- name: GetUserByVerificationTokenAndTenant :one
-SELECT id, tenant_id, email, password_hash, otp, otp_expires_at, created_at, updated_at, email_verified, verification_token
-FROM users
+SELECT * FROM users
 WHERE tenant_id = $1 AND verification_token = $2
+LIMIT 1;
+
+-- name: GetUserByOTPAndTenant :one
+SELECT * FROM users
+WHERE tenant_id = $1 AND otp = $2 AND otp_expires_at > NOW()
 LIMIT 1;
 
 -- name: UpdateUserEmailVerified :exec

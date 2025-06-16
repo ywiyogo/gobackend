@@ -33,14 +33,15 @@ type Service struct {
 
 // EmailData represents data for email templates
 type EmailData struct {
-	ToEmail     string
-	ToName      string
-	Subject     string
-	OTPCode     string
-	AppName     string
-	ExpiryTime  time.Time
-	TenantName  string
-	CompanyName string
+	ToEmail          string
+	ToName           string
+	Subject          string
+	OTPCode          string
+	AppName          string
+	ExpiryTime       time.Time
+	TenantName       string
+	CompanyName      string
+	VerificationLink string
 }
 
 // NewService creates a new mailer service instance
@@ -141,32 +142,32 @@ func (s *Service) loadTemplates() error {
             <h1>{{.AppName}}</h1>
             <h2>Email Verification Required</h2>
         </div>
-        
+
         <div class="content">
             <p>Hello,</p>
-            
+
             <p>You have requested to verify your email address for <strong>{{.TenantName}}</strong>. Please use the verification code below to complete your registration:</p>
-            
+
             <div class="otp-code">{{.OTPCode}}</div>
-            
+
             <div class="warning">
-                <strong>Important:</strong> This verification code will expire at <strong>{{.ExpiryTime.Format "Jan 2, 2006 at 3:04 PM MST"}}</strong>. 
+                <strong>Important:</strong> This verification code will expire at <strong>{{.ExpiryTime.Format "Jan 2, 2006 at 3:04 PM MST"}}</strong>.
                 If you did not request this verification, please ignore this email.
             </div>
-            
+
             <p>For your security:</p>
             <ul>
                 <li>Never share this code with anyone</li>
                 <li>Our team will never ask for this code</li>
                 <li>If you didn't request this, please ignore this email</li>
             </ul>
-            
+
             <p>If you have any questions, please contact our support team.</p>
-            
+
             <p>Best regards,<br>
             The {{.CompanyName}} Team</p>
         </div>
-        
+
         <div class="footer">
             <p>This is an automated message. Please do not reply to this email.</p>
             <p>© {{.CompanyName}}. All rights reserved.</p>
@@ -210,6 +211,110 @@ This is an automated message. Please do not reply to this email.
 		return fmt.Errorf("failed to parse plain text template: %w", err)
 	}
 	s.templates["otp_plain"] = plainTmpl
+
+	// Email verification template with both OTP and link
+	verificationTemplate := `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{{.Subject}}</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #f8f9fa; padding: 20px; text-align: center; border-radius: 5px; }
+        .content { padding: 20px; }
+        .otp-code { background-color: #e9ecef; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; margin: 20px 0; border-radius: 5px; letter-spacing: 3px; }
+        .verify-button { background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 20px 0; }
+        .verify-button:hover { background-color: #0056b3; }
+        .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6; font-size: 12px; color: #6c757d; }
+        .warning { background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 10px; border-radius: 5px; margin: 15px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{{.TenantName}}</h1>
+            <h2>Email Verification Required</h2>
+        </div>
+
+        <div class="content">
+            <p>Hello,</p>
+
+            <p>You have requested to verify your email address for <strong>{{.TenantName}}</strong>. You can verify your email in two ways:</p>
+
+            <h3>Option 1: Use the verification code</h3>
+            <div class="otp-code">{{.OTPCode}}</div>
+
+            <h3>Option 2: Click the verification link</h3>
+            <p>For your convenience, you can also click the button below to verify your email automatically:</p>
+            <a href="{{.VerificationLink}}" class="verify-button">Verify Email Address</a>
+
+            <div class="warning">
+                <strong>Important:</strong> This verification code will expire at <strong>{{.ExpiryTime.Format "Jan 2, 2006 at 3:04 PM MST"}}</strong>.
+                If you did not request this verification, please ignore this email.
+            </div>
+
+            <p>For your security:</p>
+            <ul>
+                <li>Never share this code with anyone</li>
+                <li>Our team will never ask for this code</li>
+                <li>If you didn't request this, please ignore this email</li>
+            </ul>
+
+            <p>If you have any questions, please contact our support team.</p>
+
+            <p>Best regards,<br>
+            The {{.TenantName}} Team</p>
+        </div>
+
+        <div class="footer">
+            <p>This is an automated message. Please do not reply to this email.</p>
+            <p>© {{.TenantName}}. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>`
+
+	verificationTmpl, err := template.New("verification").Parse(verificationTemplate)
+	if err != nil {
+		return fmt.Errorf("failed to parse verification template: %w", err)
+	}
+	s.templates["verification"] = verificationTmpl
+
+	// Plain text verification template
+	verificationPlainTemplate := `
+{{.TenantName}} - Email Verification
+
+Hello,
+
+You have requested to verify your email address for {{.TenantName}}.
+
+Option 1: Use the verification code
+Your verification code is: {{.OTPCode}}
+
+Option 2: Click the verification link
+{{.VerificationLink}}
+
+This code will expire at {{.ExpiryTime.Format "Jan 2, 2006 at 3:04 PM MST"}}.
+
+For your security:
+- Never share this code with anyone
+- Our team will never ask for this code
+- If you didn't request this, please ignore this email
+
+Best regards,
+The {{.TenantName}} Team
+
+---
+This is an automated message. Please do not reply to this email.
+`
+
+	verificationPlainTmpl, err := template.New("verification_plain").Parse(verificationPlainTemplate)
+	if err != nil {
+		return fmt.Errorf("failed to parse verification plain text template: %w", err)
+	}
+	s.templates["verification_plain"] = verificationPlainTmpl
 
 	return nil
 }
@@ -374,26 +479,35 @@ func (s *Service) buildMessage(toEmail, toName, subject, plainContent, htmlConte
 	return message.String()
 }
 
-// SendVerificationEmail sends a verification email with a token
-func (s *Service) SendVerificationEmail(toEmail, toName, token, appName string) error {
+// SendVerificationEmail sends a verification email with OTP code, tenant name, and expiry
+func (s *Service) SendVerificationEmail(toEmail, toName, otpCode, tenantName string, expiryTime time.Time) error {
 	subject := "Verify Your Email Address"
 
+	// Generate verification link - this would need the actual domain from tenant config
+	// For now, using a placeholder that should be configured based on environment
+	verificationLink := fmt.Sprintf("http://%s/verify-email-otp?otp=%s&email=%s",
+		"localhost:8080", // This should come from tenant domain or environment config
+		otpCode,
+		toEmail)
+
 	emailData := EmailData{
-		ToEmail:     toEmail,
-		ToName:      toName,
-		Subject:     subject,
-		OTPCode:     token, // Reusing OTPCode field for the token
-		AppName:     appName,
-		TenantName:  appName,
-		CompanyName: appName,
+		ToEmail:          toEmail,
+		ToName:           toName,
+		Subject:          subject,
+		OTPCode:          otpCode,
+		AppName:          s.config.FromName,
+		TenantName:       tenantName,
+		CompanyName:      tenantName,
+		ExpiryTime:       expiryTime,
+		VerificationLink: verificationLink,
 	}
 
-	// Generate HTML content
-	htmlContent, err := s.renderTemplate("otp", emailData) // Reusing OTP template for now
+	// Generate HTML content using verification template
+	htmlContent, err := s.renderTemplate("verification", emailData)
 	if err != nil {
 		log.Error().
 			Str("pkg", pkgName).
-			Str("template", "otp").
+			Str("template", "verification").
 			Err(err).
 			Msg("Failed to render HTML template for verification email")
 
@@ -402,14 +516,14 @@ func (s *Service) SendVerificationEmail(toEmail, toName, token, appName string) 
 	}
 
 	// Generate plain text content for multipart
-	plainContent, err := s.renderTemplate("otp_plain", emailData) // Reusing OTP plain template
+	plainContent, err := s.renderTemplate("verification_plain", emailData)
 	if err != nil {
 		log.Warn().
 			Str("pkg", pkgName).
-			Str("template", "otp_plain").
+			Str("template", "verification_plain").
 			Err(err).
 			Msg("Failed to render plain text template for verification email, using HTML only")
-		plainContent = fmt.Sprintf("Your verification token is: %s", token)
+		plainContent = fmt.Sprintf("Your verification code is: %s", otpCode)
 	}
 
 	// Send multipart email
@@ -418,19 +532,21 @@ func (s *Service) SendVerificationEmail(toEmail, toName, token, appName string) 
 
 // sendPlainTextVerificationEmail sends a plain text verification email as fallback
 func (s *Service) sendPlainTextVerificationEmail(emailData EmailData) error {
-	plainContent, err := s.renderTemplate("otp_plain", emailData) // Reusing OTP plain template
+	plainContent, err := s.renderTemplate("verification_plain", emailData)
 	if err != nil {
 		// Ultimate fallback - simple text
 		plainContent = fmt.Sprintf(`
-Email Verification Token
+Email Verification Code
 
-Your verification token is: %s
+Your verification code is: %s
+
+This code will expire at %s.
 
 If you didn't request this, please ignore this email.
 
 Best regards,
 %s Team
-`, emailData.OTPCode, emailData.CompanyName)
+`, emailData.OTPCode, emailData.ExpiryTime.Format("Jan 2, 2006 at 3:04 PM MST"), emailData.CompanyName)
 	}
 
 	return s.sendEmail(emailData.ToEmail, emailData.ToName, emailData.Subject, plainContent, "")
